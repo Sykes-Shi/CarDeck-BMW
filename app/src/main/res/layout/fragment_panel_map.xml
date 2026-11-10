@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="20dp"
+        android:paddingTop="14dp"
+        android:paddingRight="13dp"
+        android:paddingBottom="20dp">
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/phoneNavigationMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="56dp"
+            android:text="手机导航 · 车机独立使用"
+            android:textColor="#FFF5F5F7"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/phoneNavigationNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="连接中可直接切换。开启后请在手机打开地图；车机地图和自动暗幕暂停，音视频连接保持。"
+            android:textColor="#FF8E8E93"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="11dp"
+            android:text="仪表盘地图屏使用的地图应用，选中即生效。"
+            android:textColor="#FF8E8E93"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:id="@+id/mapOptions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="地图文字与控件"
+            android:textColor="#FFF5F5F7"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/mapUiScaleGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+            <RadioButton android:id="@+id/mapUiScale100" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="原大小 · 100%" android:textColor="#FFF5F5F7" android:textSize="14sp" />
+            <RadioButton android:id="@+id/mapUiScale125" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="放大 · 125%（默认）" android:textColor="#FFF5F5F7" android:textSize="14sp" />
+            <RadioButton android:id="@+id/mapUiScale150" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="更大 · 150%" android:textColor="#FFF5F5F7" android:textSize="14sp" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="下次连接生效。只放大车机地图的文字与按钮，不改变手机字号；放大后同时可见的地图范围会减少。"
+            android:textColor="#FF8E8E93"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="百度巡航"
+            android:textColor="#FFF5F5F7"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/baiduWideCruise"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="巡航分屏适应宽屏"
+            android:textColor="#FFF5F5F7"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="为搜索栏和红绿灯留出空间。分屏文字可能较小，展开地图后使用上方所选大小。下次连接生效。"
+            android:textColor="#FF8E8E93"
+            android:textSize="12sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/baiduCruiseAutomatic"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:minHeight="56dp"
+            android:text="地图新启动时自动进入百度巡航"
+            android:textColor="#FFF5F5F7"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="需将百度地图设为默认地图。每次连接只在地图新启动时尝试一次；地图已经打开时保留当前页面。"
+            android:textColor="#FF8E8E93"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/baiduCruiseStart"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_segment_sel"
+            android:minHeight="48dp"
+            android:text="开始百度巡航"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFFFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="无需设置目的地。连接车机后可手动开始，当前地图页面会切换到巡航。"
+            android:textColor="#FF8E8E93"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 宽短屏封面与歌名并排，给播放键留出稳定触达区；窄小卡片仍可纵向滚动。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <FrameLayout android:id="@+id/dashMediaCard" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/dashWallpaper" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" android:scaleType="fitXY" />
+    <ImageView android:id="@+id/dashArtworkBackdrop" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" android:scaleType="centerCrop" />
+    <View android:id="@+id/dashArtworkVeil" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <View android:id="@+id/dashScrim" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:scrollbars="none">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="12dp" android:paddingTop="12dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:gravity="center_vertical">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="音乐" android:textColor="#FFF5F5F7" android:textSize="18sp" android:textStyle="bold" />
+                <TextView android:id="@+id/dashBaiduCruise" android:layout_width="wrap_content" android:layout_height="40dp" android:paddingHorizontal="10dp" android:gravity="center" android:text="百度巡航" android:textSize="12sp" android:textColor="#FFB6EDF0" android:background="@drawable/bg_car_media_button" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:gravity="center_vertical">
+                <FrameLayout android:id="@+id/dashCoverFrame" android:layout_width="84dp" android:layout_height="84dp" android:background="@drawable/bg_car_media_surface">
+                    <TextView android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="♪" android:textSize="34sp" android:textColor="#FFB4C6D1" android:importantForAccessibility="no" />
+                    <ImageView android:id="@+id/dashCover" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:contentDescription="打开车载播放" />
+                </FrameLayout>
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:orientation="vertical">
+                    <TextView android:id="@+id/dashMediaTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:text="选择一首音乐" android:textSize="19sp" android:textStyle="bold" android:textColor="#FFF5F5F7" />
+                    <TextView android:id="@+id/dashMediaArtist" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:textSize="13sp" android:textColor="#FFCBD2DB" />
+                </LinearLayout>
+            </LinearLayout>
+            <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1">
+                <TextView android:id="@+id/dashMediaLyrics" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="center" android:layout_marginVertical="6dp" android:gravity="center" android:maxLines="3" android:ellipsize="end" android:includeFontPadding="false" android:lineSpacingExtra="2dp" android:textSize="24sp" android:textStyle="bold" android:textColor="#FFFFFFFF" android:visibility="gone" />
+            </FrameLayout>
+            <TextView android:id="@+id/dashMediaLyricsSource" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="3dp" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:textSize="11sp" android:textColor="#FFB4C8D3" android:visibility="gone" />
+            <ProgressBar android:id="@+id/dashMediaProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:max="1000" android:progressDrawable="@drawable/bg_media_progress" android:visibility="gone" />
+            <TextView android:id="@+id/dashMediaTime" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:gravity="end" android:fontFeatureSettings="tnum" android:textSize="12sp" android:textColor="#FFCBD2DB" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="64dp" android:layout_marginTop="4dp" android:gravity="center">
+                <ImageView android:id="@+id/dashPrev" android:layout_width="48dp" android:layout_height="52dp" android:padding="12dp" android:src="@drawable/ic_media_prev" android:contentDescription="上一首" android:background="?android:attr/selectableItemBackgroundBorderless" />
+                <ImageView android:id="@+id/dashPlayPause" android:layout_width="60dp" android:layout_height="60dp" android:layout_marginHorizontal="8dp" android:padding="14dp" android:src="@drawable/ic_media_play" android:contentDescription="播放或暂停" android:background="@drawable/bg_car_media_play" />
+                <ImageView android:id="@+id/dashNext" android:layout_width="48dp" android:layout_height="52dp" android:padding="12dp" android:src="@drawable/ic_media_next" android:contentDescription="下一首" android:background="?android:attr/selectableItemBackgroundBorderless" />
+            </LinearLayout>
+            <TextView android:id="@+id/dashMediaFeedback" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textSize="11sp" android:textColor="#FFBCD0DA" android:visibility="gone" />
+        </LinearLayout>
+        </ScrollView>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" android:layout_marginTop="6dp" android:layout_marginBottom="12dp" android:gravity="center_vertical">
+            <TextView android:id="@+id/dashOpenPlayer" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:gravity="center" android:text="车载播放" android:textSize="15sp" android:textStyle="bold" android:textColor="#FFDBF6F7" android:background="@drawable/bg_car_media_button" />
+            <TextView android:id="@+id/dashBaiduDestination" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginStart="6dp" android:gravity="center" android:text="搜目的地" android:textSize="15sp" android:textStyle="bold" android:textColor="#FFDBF6F7" android:clickable="true" android:focusable="true" android:background="@drawable/bg_car_media_button" android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+    </FrameLayout>
+    <LinearLayout android:id="@+id/dashPhoneNavigationNotice" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:padding="20dp" android:background="@drawable/bg_car_media_surface" android:visibility="gone">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="导航在手机上" android:textSize="24sp" android:textStyle="bold" android:textColor="#FFF5F5F7" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="请在手机打开地图导航\n车机可继续播放视频或音乐" android:textSize="15sp" android:textColor="#FFCBD2DB" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:gravity="center" android:text="可在车机设置的「默认地图」中切换" android:textSize="12sp" android:textColor="#FF9AB8C7" />
+    </LinearLayout>
+</FrameLayout>

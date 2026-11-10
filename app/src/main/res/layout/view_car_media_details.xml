@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/carMediaDetails"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center_vertical">
+    <TextView android:id="@+id/carMediaTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:text="选择一首音乐" android:textSize="28sp" android:textStyle="bold" android:textColor="#FFF5F7FA" />
+    <TextView android:id="@+id/carMediaArtist" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:gravity="center" android:maxLines="1" android:ellipsize="end" android:textSize="18sp" android:textColor="#FFC1CCD6" />
+    <TextView android:id="@+id/carMediaStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:textSize="13sp" android:textColor="#FF92B3C3" />
+    <LinearLayout android:id="@+id/carMediaLyricsBlock" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:orientation="vertical" android:visibility="gone">
+        <TextView android:id="@+id/carMediaLyrics" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:maxLines="3" android:ellipsize="end" android:includeFontPadding="false" android:lineSpacingExtra="2dp" android:textSize="34sp" android:textStyle="bold" android:textColor="#FFFFFFFF" />
+        <TextView android:id="@+id/carMediaNextLyric" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:includeFontPadding="false" android:textSize="23sp" android:textColor="#FFE1EDF3" android:visibility="gone" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 横屏把控制条固定在信息滚动区之外，歌词变长时仍可直接播放/暂停。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/carMediaControls"
+    android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center">
+    <ImageView android:id="@+id/carMediaPrevious" android:layout_width="60dp" android:layout_height="60dp" android:padding="14dp" android:src="@drawable/ic_media_prev" android:contentDescription="上一首" android:background="?android:attr/selectableItemBackgroundBorderless" />
+    <ImageView android:id="@+id/carMediaPlayPause" android:layout_width="76dp" android:layout_height="76dp" android:layout_marginHorizontal="28dp" android:padding="16dp" android:src="@drawable/ic_media_play" android:contentDescription="播放或暂停" android:background="@drawable/bg_car_media_play" />
+    <ImageView android:id="@+id/carMediaNext" android:layout_width="60dp" android:layout_height="60dp" android:padding="14dp" android:src="@drawable/ic_media_next" android:contentDescription="下一首" android:background="?android:attr/selectableItemBackgroundBorderless" />
+</LinearLayout>

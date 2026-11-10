@@ -1,0 +1,23 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+# 参考仓库（GPL/第三方源码，不随本项目分发）
+reference/
+# ZCode 会话产物
+.zcode/
+# 发布签名（绝不入库：私钥泄露即等于任何人可签发你的更新）
+keystore.properties
+*.jks
+*.keystore
+
+# 车型重放 fixtures（含真实地址/热点名，逐条评审后才入册）
+app/src/test/resources/carplay/fixtures/*.jsonl
+
+# Kotlin build state
+.kotlin/

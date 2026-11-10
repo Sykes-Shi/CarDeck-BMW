@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用名**不含** CarPlay：它既是 Apple 的商标，用「CarPlay」作产品名会构成
+         商标性使用（且容易被误认为官方产品）。兼容关系写在副标题/README 里，
+         那属于描述性引用。详见仓库根目录 DISCLAIMER.md 与 README「非官方声明」。 -->
+    <string name="app_name">CarDeck BMW诊断版</string>
+    <string name="app_subtitle">非官方实验性 CarPlay 兼容发送端</string>
+    <string name="car_settings">车机设置</string>
+    <string name="online_lyrics">在线歌词</string>
+    <string name="online_lyrics_hint">投屏播放时，若播放器没有提供歌词，使用歌名和歌手向 LRCLIB、网易云音乐曲库查找匹配的歌词。</string>
+    <string name="lyrics_mobile_retry">允许网易云歌词用移动数据重试</string>
+    <string name="lyrics_mobile_retry_hint">VPN 线路连不上歌词服务时，仅向网易云公开曲库用移动数据再查一次。</string>
+    <string name="app_mobile_data_button">批量设置直连应用</string>
+    <string name="projection_internet_hint">保持移动数据开启。宝马 Wi-Fi 优先用于投屏，应用按系统或 VPN 分流上网。打开此开关可在下次连接时记录详细网络日志。</string>
+    <string name="samsung_coexistence_hint">保持移动数据开启。投屏时会为需要的直连应用临时优先使用移动数据。此开关控制下次连接的详细网络日志。</string>
+    <string name="samsung_data_settings_path">请在系统设置中打开「连接 → 流量监控 → 联网管理」。</string>
+    <string name="accessibility_description">镜像模式：把车机触摸手势注入手机屏幕，不读取屏幕内容</string>
+</resources>

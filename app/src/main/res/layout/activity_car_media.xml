@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/carMediaRoot" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#FF111820">
+    <ImageView android:id="@+id/carMediaBackdrop" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:importantForAccessibility="no" />
+    <View android:id="@+id/carMediaBackdropVeil" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#D9111820" />
+<ScrollView android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical">
+            <TextView android:id="@+id/carMediaBack" android:layout_width="48dp" android:layout_height="48dp" android:gravity="center" android:text="‹" android:textSize="30sp" android:textColor="#FFF5F7FA" android:contentDescription="返回首页" android:background="@drawable/bg_car_media_button" />
+            <TextView android:id="@+id/carMediaSource" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp" android:maxLines="1" android:ellipsize="end" android:text="车载播放" android:textSize="18sp" android:textColor="#FFF5F7FA" />
+        </LinearLayout>
+        <FrameLayout android:id="@+id/carMediaCoverFrame" android:layout_width="200dp" android:layout_height="200dp" android:layout_gravity="center_horizontal" android:layout_marginVertical="14dp" android:background="@drawable/bg_car_media_surface">
+            <TextView android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="♪" android:textSize="64sp" android:textColor="#FF9CB8C9" android:importantForAccessibility="no" />
+            <ImageView android:id="@+id/carMediaCover" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:importantForAccessibility="no" />
+        </FrameLayout>
+        <include layout="@layout/view_car_media_details" />
+        <include layout="@layout/view_car_media_timeline" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" />
+        <include layout="@layout/view_car_media_controls" android:layout_width="match_parent" android:layout_height="76dp" android:layout_marginTop="12dp" />
+        <TextView android:id="@+id/carMediaOpenOriginal" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="20dp" android:gravity="center" android:text="打开网易云选歌" android:textSize="15sp" android:textColor="#FFDBF6F7" android:background="@drawable/bg_car_media_button" />
+    </LinearLayout>
+</ScrollView>
+</FrameLayout>
