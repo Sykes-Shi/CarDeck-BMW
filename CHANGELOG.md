@@ -51,4 +51,4 @@ V2、V3 为早期诊断版本，现有构建记录未列出逐项变化。
 
 ## 获取版本
 
-如需体验或获取安装包，请通过 [GitHub Issues](https://github.com/shiyukun120737-hub/CarDeck-BMW/issues) 联系项目维护者，并说明希望获取的版本。
+如需体验或获取安装包，请通过 [GitHub Issues](https://github.com/Sykes-Shi/CarDeck-BMW/issues) 联系项目维护者，并说明希望获取的版本。

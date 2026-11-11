@@ -8,7 +8,7 @@ CarDeck-BMW is an experimental Android project based on [CarDeck](https://github
 
 当前源码对应 **V33 实验性诊断版**，仍在开发和实车验证中。宝马车型、车机版本和手机系统存在差异，连接、声音、网络、导航和按键功能的表现可能不同。请在停车时完成配置和操作，并保留原车导航等备用方式。完整说明见 [免责声明](DISCLAIMER.md)。
 
-各诊断版本的主要变化见 [版本更新记录](CHANGELOG.md)。如需体验或获取安装包，可通过 [GitHub Issues](https://github.com/shiyukun120737-hub/CarDeck-BMW/issues) 联系项目维护者，并说明希望获取的版本。
+各诊断版本的主要变化见 [版本更新记录](CHANGELOG.md)。如需体验或获取安装包，可通过 [GitHub Issues](https://github.com/Sykes-Shi/CarDeck-BMW/issues) 联系项目维护者，并说明希望获取的版本。
 
 ## 主要功能与优化
 
