@@ -195,6 +195,13 @@ class VideoSender(
         }
     }
 
+    /** The session can no longer acknowledge frames; unblock a pending write and let the
+     * video thread run its usual encoder cleanup and onEnded callback. */
+    fun onControlConnectionLost() {
+        running.set(false)
+        runCatching { socket?.close() }
+    }
+
     fun stop() {
         if (transportStopLogged.compareAndSet(false, true)) {
             runCatching { log("VIDEO: transport_stop ${transportDiagnosticLine()}") }

@@ -22,8 +22,8 @@ internal class SessionAttemptOwnership<N : Any> {
     fun active(attempt: Attempt<N>): Boolean = current === attempt && !attempt.cancelled
 
     @Synchronized
-    fun bind(attempt: Attempt<N>, network: N): Boolean {
-        if (!active(attempt)) return false
+    fun bind(attempt: Attempt<N>, network: N, expectedNetwork: N? = null): Boolean {
+        if (!active(attempt) || expectedNetwork != null && network != expectedNetwork) return false
         attempt.network = network
         return true
     }

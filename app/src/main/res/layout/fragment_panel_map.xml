@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true">
@@ -119,11 +120,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/bg_segment_sel"
+            android:background="@drawable/bg_car_media_button"
+            app:backgroundTint="@null"
             android:minHeight="48dp"
             android:text="开始百度巡航"
             android:textAllCaps="false"
-            android:textColor="#FFFFFFFF"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/car_action_text"
             android:textSize="14sp" />
 
         <TextView

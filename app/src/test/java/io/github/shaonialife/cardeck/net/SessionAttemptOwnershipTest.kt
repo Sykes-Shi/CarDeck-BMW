@@ -84,6 +84,19 @@ class SessionAttemptOwnershipTest {
     }
 
     @Test
+    fun recoveryCannotBindReplacementNetworkBeforeDelayedFirstAssociation() {
+        val owner = SessionAttemptOwnership<Network>()
+        val recovery = owner.begin()
+        val invited = Network(397)
+        assertNull(owner.lose(invited))
+        assertFalse(owner.bind(recovery, Network(398), invited))
+        assertFalse(owner.matches(recovery, Network(398)))
+        assertTrue(owner.bind(recovery, Network(397), invited))
+        assertSame(recovery, owner.lose(invited))
+        assertFalse(owner.bind(recovery, invited, invited))
+    }
+
+    @Test
     fun emptyDeferredCleanupCannotOwnLaterAttempt() {
         val owner = SessionAttemptOwnership<Network>()
         val retired = owner.cancel()

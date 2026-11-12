@@ -124,6 +124,46 @@ class BmwModeBorrowGuardTest {
     private fun requestUi(guard: BmwModeBorrowGuard) =
         guard.restoreRequestedUi(guard.captureUiRestoreRevision())
 
+    private fun applyAndCheckScreen(g: BmwModeBorrowGuard, command: Map<String, Any?>): Long? {
+        val before = g.isScreenAvailableToController()
+        g.apply(command)
+        return g.consumeScreenReturn(before)
+    }
+
+    @Test fun overlappingScreenBorrowsRefreshOnlyAfterLastReturnAndAnotherBorrowCancelsIt() {
+        val g = guard()
+        fun borrow(id: String) = command(row(id = id) + mapOf("unborrowConstraint" to 1000L))
+        fun release(id: String) = command(row(1L, 4L, id))
+        assertEquals(null, applyAndCheckScreen(g, borrow("first")))
+        assertEquals(null, applyAndCheckScreen(g, borrow("second")))
+        assertEquals(null, applyAndCheckScreen(g, release("second")))
+        assertEquals("receiver_owns_screen", g.screenRefreshBlock(g.captureUiRestoreRevision()))
+        val returned = requireNotNull(applyAndCheckScreen(g, release("first")))
+        assertEquals(null, g.screenRefreshBlock(returned))
+        assertEquals(null, applyAndCheckScreen(g, command()))
+        assertEquals(null, applyAndCheckScreen(g, borrow("third")))
+        assertEquals("mode_state_changed", g.screenRefreshBlock(returned))
+        assertEquals("receiver_owns_screen", g.screenRefreshBlock(g.captureUiRestoreRevision()))
+        assertFalse(requestUi(g).allowed)
+        assertEquals(1L, owner(g, 2))
+    }
+
+    @Test fun callEndingAfterScreenReturnGetsOneRefreshAndNativeActivityBlocksManualRefresh() {
+        val g = guard()
+        applyAndCheckScreen(g, phoneState(true, row(id = "dial")))
+        assertEquals(null, applyAndCheckScreen(g, command(row(1L, 4L, "dial"))))
+        assertEquals("native_activity_active", g.screenRefreshBlock(g.captureUiRestoreRevision()))
+        val returned = requireNotNull(applyAndCheckScreen(g, phoneState(false)))
+        assertEquals(null, g.screenRefreshBlock(returned))
+        assertEquals(null, applyAndCheckScreen(g, phoneState(false)))
+        applyAndCheckScreen(g, phoneState(true))
+        assertEquals("native_activity_active", g.screenRefreshBlock(returned))
+        val native = nativeAfterBorrow()
+        assertEquals("receiver_owns_screen", native.screenRefreshBlock(native.captureUiRestoreRevision()))
+        val other = guard("other receiver")
+        assertEquals("receiver_not_supported", other.screenRefreshBlock(other.captureUiRestoreRevision()))
+    }
+
     @Test
     fun newClientStartsWithControllerResources() {
         val guard = guard()

@@ -1,12 +1,12 @@
 package io.github.shaonialife.cardeck.launcher
 
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.Drawable
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import kotlin.math.roundToInt
+import io.github.shaonialife.cardeck.R
 
 /** A visible cursor for CarDeck's touch-first controls. Never changes a control's background. */
 internal class CarControllerFocus {
@@ -14,7 +14,7 @@ internal class CarControllerFocus {
         var owner = java.lang.ref.WeakReference<CarControllerFocus>(null)
     }
     private var selected: View? = null
-    private var ring: GradientDrawable? = null
+    private var ring: Drawable? = null
 
     fun clear() {
         ring?.let { selected?.overlay?.remove(it) }
@@ -27,15 +27,8 @@ internal class CarControllerFocus {
         if (selected === view && ring != null) return
         if (owner.get() !== this) owner.get()?.clear()
         clear()
-        val density = view.resources.displayMetrics.density
-        val stroke = (3 * density).roundToInt().coerceAtLeast(2)
-        val border = GradientDrawable().apply {
-            cornerRadius = 10 * density
-            // Large app tiles and album art should keep the same luminance when selected.
-            setColor(android.graphics.Color.TRANSPARENT)
-            setStroke(stroke, 0xFF68F5FF.toInt())
-            setBounds(0, 0, view.width, view.height)
-        }
+        val border = requireNotNull(view.context.getDrawable(R.drawable.car_controller_focus)).mutate()
+        border.setBounds(0, 0, view.width, view.height)
         view.overlay.add(border)
         selected = view
         ring = border

@@ -41,13 +41,7 @@ class CarMediaActivity : CarControllerActivity() {
     private var feedback: String? = null
     private var feedbackUntil = 0L
     private val stateListener = { runOnUiThread { if (started) render() } }
-    private val tick = object : Runnable {
-        override fun run() {
-            if (!started || !validSession()) return
-            render()
-            handler.postDelayed(this, 1_000)
-        }
-    }
+    private val tick = Runnable { if (started) render() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -169,6 +163,10 @@ class CarMediaActivity : CarControllerActivity() {
         findViewById<TextView>(R.id.carMediaTitle).text = now?.title?.takeIf { it.isNotBlank() } ?: "选择一首音乐"
         findViewById<TextView>(R.id.carMediaArtist).text = now?.artist.orEmpty()
         val elapsed = SystemClock.elapsedRealtime()
+        if (started) {
+            handler.removeCallbacks(tick)
+            handler.postDelayed(tick, now?.nextMediaTickDelayMs(elapsed) ?: MediaSessionsState.PROGRESS_TICK_MS)
+        }
         val status = findViewById<TextView>(R.id.carMediaStatus)
         status.text =
             if (feedback != null && elapsed < feedbackUntil) feedback else when {

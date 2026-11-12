@@ -24,7 +24,8 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
     // Even epochs permit media. Odd epochs last until the car acknowledges the return of
     // the audio resource and the end of the native call. The sender reads this lock-free.
     @Volatile private var callEpoch = 0L
-    private var uiRevision = 0L
+    @Volatile private var uiRevision = 0L
+    private var screenReturnPending = false
     private var screenNativeReturnArmed = false
 
     data class UiRestoreDecision(val allowed: Boolean, val reason: String)
@@ -175,6 +176,24 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
     fun isScreenAvailableToController(): Boolean = screen.owner == CONTROLLER
 
     fun captureUiRestoreRevision(): Long = uiRevision
+
+    /** Called after every changeModes, including appStates-only call-end notifications. */
+    fun consumeScreenReturn(wasWithController: Boolean): Long? {
+        if (!isScreenAvailableToController()) screenReturnPending = false
+        else if (!wasWithController) screenReturnPending = true
+        if (!screenReturnPending || screenRefreshBlock(uiRevision) != null) return null
+        screenReturnPending = false
+        return uiRevision
+    }
+
+    /** A refresh redraws only a screen already released by the head unit. */
+    fun screenRefreshBlock(expectedRevision: Long): String? = when {
+        !eligibleReceiver -> "receiver_not_supported"
+        expectedRevision != uiRevision -> "mode_state_changed"
+        !isScreenAvailableToController() -> "receiver_owns_screen"
+        nativePhoneCall || nativeSpeech > 0L || audio.borrowed -> "native_activity_active"
+        else -> null
+    }
 
     fun controllerInputRevision(): Long? = if (eligibleReceiver && isScreenAvailableToController()) uiRevision else null
 

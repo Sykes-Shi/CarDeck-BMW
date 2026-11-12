@@ -2,6 +2,17 @@
 <resources>
     <color name="ic_launcher_background">#0D1117</color>
 
+    <!-- Projected UI: graphite surfaces, pale blue controls and a brighter focus ring. -->
+    <color name="car_surface">#171F2A</color>
+    <color name="car_control">#2B3745</color>
+    <color name="car_outline">#536376</color>
+    <color name="car_text">#F3F6FA</color>
+    <color name="car_text_muted">#BCC8D5</color>
+    <color name="car_accent">#A9CEFA</color>
+    <color name="car_on_accent">#132438</color>
+    <color name="car_focus">#C4E2FF</color>
+    <color name="car_control_ripple">#33D7E8FF</color>
+
     <!-- 手机侧 Material 3 色调令牌（与 design/phone-ui-proto.html 一一对应） -->
     <color name="m3_surface">#0E1415</color>
     <color name="m3_surface_low">#151B1C</color>

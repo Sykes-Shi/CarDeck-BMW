@@ -52,6 +52,7 @@ class AirPlayClient(
     private val retryTick: ((attempt: Int) -> Unit)? = null,
     /** 非阻塞快照；BMW 在首次 DETECT 之后收到新 ctrl 邀请时可补一次探测。 */
     private val currentCtrlInviteCount: () -> Int = { 0 },
+    private val createControlSocket: () -> Socket = { Socket() },
 ) {
     /**
      * 当前使用的接收端端点。0x4301 晚到 / mDNS 后上线时由主控热更新；
@@ -668,7 +669,7 @@ class AirPlayClient(
 
     data class UiRestoreResult(val accepted: Boolean, val reason: String, val controllerRevision: Long? = null)
 
-    data class ModeChangeResult(val accepted: Boolean, val screenReturned: Boolean)
+    data class ModeChangeResult(val accepted: Boolean, val returnedScreenRevision: Long?)
 
     fun assertModes(): Boolean = synchronized(modeStateLock) {
         !cancelled && sendCurrentModesLocked()
@@ -677,6 +678,20 @@ class AirPlayClient(
     /** 在事件到达时捕获，后台恢复不能越过更新的倒车借屏或原生界面 Take。 */
     fun captureUiRestoreRevision(): Long = synchronized(modeStateLock) {
         borrowGuardLocked().captureUiRestoreRevision()
+    }
+
+    // Snapshot at the user's tap, without waiting on a potentially slow RTSP transaction on the UI thread.
+    fun screenRevisionAtTap(): Long? = bmwBorrowGuard?.captureUiRestoreRevision()
+
+    /** Never alters ownership. Retry an unacknowledged return, or redraw a confirmed grant. */
+    fun refreshReleasedScreen(expectedRevision: Long, userRequested: Boolean): UiRestoreResult = synchronized(modeStateLock) {
+        if (cancelled) return@synchronized UiRestoreResult(false, "client_cancelled")
+        val reason = borrowGuardLocked().screenRefreshBlock(expectedRevision)
+        if (reason != null) return@synchronized UiRestoreResult(false, reason)
+        if ((userRequested || controllerInputRevision != expectedRevision) && !sendCurrentModesLocked(reassertingOwnership = true)) {
+            return@synchronized UiRestoreResult(false, "modes_failed")
+        }
+        UiRestoreResult(!cancelled && controllerInputRevision == expectedRevision, "screen_refresh", controllerInputRevision)
     }
 
     /** requestUI 执行时核对状态代次，再按当前借屏/原生归属决定是否恢复。 */
@@ -693,14 +708,14 @@ class AirPlayClient(
 
     /** BMW 借屏及实测特定 Take 共用同一状态锁；Take 本身不能触发恢复关键帧。 */
     fun respondToModeChange(command: Map<*, *>): ModeChangeResult = synchronized(modeStateLock) {
-        if (cancelled) return@synchronized ModeChangeResult(false, false)
+        if (cancelled) return@synchronized ModeChangeResult(false, null)
         val guard = borrowGuardLocked()
         val before = guard.isScreenAvailableToController()
         val mediaBefore = guard.mediaEpoch()
         val result = guard.apply(command)
         if (mediaBefore != null && guard.mediaEpoch() == null) log("AUDIO: 宝马原车通话开始，暂缓发送实时媒体")
         receiverAudioClock.noteBorrow(guard.isAudioBorrowed())
-        val returned = !before && guard.isScreenAvailableToController()
+        val returned = guard.consumeScreenReturn(before)
         log("EXPERIMENT v13: BMW mode update result=$result ${guard.summary()}")
         ModeChangeResult(sendCurrentModesLocked(), returned)
     }
@@ -2432,7 +2447,7 @@ class AirPlayClient(
                     continue
                 }
             try {
-                val newSocket = Socket()
+                val newSocket = createControlSocket()
                 newSocket.connect(InetSocketAddress(address, target.airPlayPort), timeoutMillis)
                 if (generation != endpointGeneration) {
                     // 连接途中端点已更新：丢弃这条旧连接，下一轮按新地址重连

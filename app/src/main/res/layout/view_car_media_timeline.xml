@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-    <TextView android:id="@+id/carMediaLyricsSource" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:textSize="12sp" android:textColor="#FFB4C8D3" android:visibility="gone" />
-    <ProgressBar android:id="@+id/carMediaProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:max="1000" android:progressDrawable="@drawable/bg_media_progress" />
+    <TextView android:id="@+id/carMediaLyricsSource" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:gravity="center" android:maxLines="2" android:ellipsize="end" android:textSize="12sp" android:textColor="@color/car_text_muted" android:visibility="gone" />
+    <ProgressBar android:id="@+id/carMediaProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:max="1000" android:progressDrawable="@drawable/bg_media_progress" android:progressTint="@color/car_accent" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp">
-        <TextView android:id="@+id/carMediaElapsed" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="—:—" android:fontFeatureSettings="tnum" android:textSize="13sp" android:textColor="#FFC1CCD6" />
-        <TextView android:id="@+id/carMediaDuration" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—:—" android:fontFeatureSettings="tnum" android:textSize="13sp" android:textColor="#FFC1CCD6" />
+        <TextView android:id="@+id/carMediaElapsed" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="—:—" android:fontFeatureSettings="tnum" android:textSize="13sp" android:textColor="@color/car_text_muted" />
+        <TextView android:id="@+id/carMediaDuration" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="—:—" android:fontFeatureSettings="tnum" android:textSize="13sp" android:textColor="@color/car_text_muted" />
     </LinearLayout>
 </LinearLayout>

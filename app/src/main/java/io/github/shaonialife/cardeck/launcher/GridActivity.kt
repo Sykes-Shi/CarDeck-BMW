@@ -232,15 +232,7 @@ class GridActivity : AppCompatActivity() {
         }
     }
 
-    /** 音乐卡进度自刷新（1s；渲染尾部续调度，位置由锚点+速度推算）。 */
-    private val mediaTick =
-        object : Runnable {
-            override fun run() {
-                if (!mediaVisible) return
-                renderMediaCard()
-                tickHandler.postDelayed(this, 1_000)
-            }
-        }
+    private val mediaTick = Runnable { if (mediaVisible) renderMediaCard() }
 
     private val tickHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -286,7 +278,12 @@ class GridActivity : AppCompatActivity() {
         dashboardBackdrop?.bind(now?.art, now?.backdropColor ?: ArtworkTone.DEFAULT)
         panel.findViewById<View>(R.id.dashArtworkVeil).visibility = if (hasArt) View.VISIBLE else View.GONE
         panel.findViewById<View>(R.id.dashScrim).visibility = if (hasArt) View.GONE else View.VISIBLE
-        val lyricText = if (MediaSessionsState.accessGranted) now?.lyricTextAt(android.os.SystemClock.elapsedRealtime(), 1) else null
+        val elapsed = android.os.SystemClock.elapsedRealtime()
+        if (mediaVisible) {
+            tickHandler.removeCallbacks(mediaTick)
+            tickHandler.postDelayed(mediaTick, now?.nextMediaTickDelayMs(elapsed) ?: MediaSessionsState.PROGRESS_TICK_MS)
+        }
+        val lyricText = if (MediaSessionsState.accessGranted) now?.lyricTextAt(elapsed, 1) else null
         panel.findViewById<TextView>(R.id.dashMediaLyrics).apply {
             text = lyricText.orEmpty()
             visibility = if (lyricText == null) View.GONE else View.VISIBLE

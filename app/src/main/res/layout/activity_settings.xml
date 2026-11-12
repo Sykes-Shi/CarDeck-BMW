@@ -3,10 +3,11 @@
      尺寸折算：应用屏超采样 ×1.5 后密度 ≈301dpi，stream 像素 ≈ dp×1.25，故原型 px ÷ 1.25 = dp。
      右栏内容按菜单切换（管理桌面应用 / 应用超采样）。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
-    android:background="#FF000000">
+    android:background="@color/car_surface">
 
     <!-- ===================== 左栏：菜单 ===================== -->
     <LinearLayout
@@ -32,7 +33,7 @@
             android:paddingRight="10dp"
             android:paddingBottom="6dp"
             android:text="桌面"
-            android:textColor="#FF0A84FF"
+            android:textColor="@color/car_accent"
             android:textSize="13sp" />
 
         <TextView
@@ -43,7 +44,7 @@
             android:layout_marginRight="8dp"
             android:letterSpacing="0.14"
             android:text="车机设置"
-            android:textColor="#FF636366"
+            android:textColor="@color/car_text_muted"
             android:textSize="11sp"
             android:textStyle="bold" />
 
@@ -61,6 +62,7 @@
                 android:layout_width="23dp"
                 android:layout_height="23dp"
                 android:background="@drawable/bg_menu_chip"
+                app:tint="@color/car_accent"
                 android:importantForAccessibility="no"
                 android:padding="5dp"
                 android:src="@drawable/ic_menu_grid" />
@@ -70,9 +72,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="9dp"
                 android:text="管理桌面应用"
-                android:textColor="#FFF5F5F7"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textColor="@color/car_text"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -80,7 +81,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/bg_menu_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:padding="9dp">
@@ -89,6 +90,7 @@
                 android:layout_width="23dp"
                 android:layout_height="23dp"
                 android:background="@drawable/bg_menu_chip"
+                app:tint="@color/car_accent"
                 android:importantForAccessibility="no"
                 android:padding="5dp"
                 android:src="@drawable/ic_menu_zoom" />
@@ -98,7 +100,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="9dp"
                 android:text="应用超采样"
-                android:textColor="#FF8E8E93"
+                android:textColor="@color/car_text_muted"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -107,7 +109,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/bg_menu_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:padding="9dp">
@@ -116,6 +118,7 @@
                 android:layout_width="23dp"
                 android:layout_height="23dp"
                 android:background="@drawable/bg_menu_chip"
+                app:tint="@color/car_accent"
                 android:importantForAccessibility="no"
                 android:padding="5dp"
                 android:src="@drawable/ic_screen_rotation" />
@@ -125,7 +128,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="9dp"
                 android:text="应用横屏"
-                android:textColor="#FF8E8E93"
+                android:textColor="@color/car_text_muted"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -134,7 +137,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/bg_menu_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:padding="9dp">
@@ -143,6 +146,7 @@
                 android:layout_width="23dp"
                 android:layout_height="23dp"
                 android:background="@drawable/bg_menu_chip"
+                app:tint="@color/car_accent"
                 android:importantForAccessibility="no"
                 android:padding="5dp"
                 android:src="@drawable/ic_menu_dock" />
@@ -152,7 +156,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="9dp"
                 android:text="dock 栏设置"
-                android:textColor="#FF8E8E93"
+                android:textColor="@color/car_text_muted"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -161,7 +165,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/bg_menu_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:padding="9dp">
@@ -170,6 +174,7 @@
                 android:layout_width="23dp"
                 android:layout_height="23dp"
                 android:background="@drawable/bg_menu_chip"
+                app:tint="@color/car_accent"
                 android:importantForAccessibility="no"
                 android:padding="5dp"
                 android:src="@drawable/ic_menu_map" />
@@ -179,7 +184,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="9dp"
                 android:text="默认地图"
-                android:textColor="#FF8E8E93"
+                android:textColor="@color/car_text_muted"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -188,7 +193,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/bg_menu_item"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:padding="9dp">
@@ -197,6 +202,7 @@
                 android:layout_width="23dp"
                 android:layout_height="23dp"
                 android:background="@drawable/bg_menu_chip"
+                app:tint="@color/car_accent"
                 android:importantForAccessibility="no"
                 android:padding="5dp"
                 android:src="@drawable/ic_menu_display" />
@@ -206,7 +212,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="9dp"
                 android:text="显示"
-                android:textColor="#FF8E8E93"
+                android:textColor="@color/car_text_muted"
                 android:textSize="14sp" />
         </LinearLayout>
     </LinearLayout>
@@ -214,7 +220,7 @@
     <View
         android:layout_width="1px"
         android:layout_height="match_parent"
-        android:background="#FF1E1E21" />
+        android:background="@color/car_control" />
 
     <!-- ===================== 右栏：内容（按菜单切换） ===================== -->
     <FrameLayout
@@ -242,7 +248,7 @@
             android:paddingTop="7dp"
             android:paddingRight="13dp"
             android:paddingBottom="7dp"
-            android:textColor="#FFE5E5EA"
+            android:textColor="@color/car_text"
             android:textSize="12sp" />
     </FrameLayout>
 </LinearLayout>

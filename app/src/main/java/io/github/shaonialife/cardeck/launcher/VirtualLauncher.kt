@@ -1565,7 +1565,9 @@ object VirtualLauncher {
 
     private fun shellArgument(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
-    private fun sendBaiduPage(context: Context, displayId: Int, page: BaiduMapPage, current: () -> Boolean): Boolean {
+    private fun sendBaiduPage(
+        context: Context, displayId: Int, page: BaiduMapPage, current: () -> Boolean, mapTaskId: Int? = null,
+    ): Boolean {
         val generation = sessionGeneration()
         if (displayId <= 0 || isPhoneNavigationActive() || !current()) return false
         AppOrientationCompat.awaitPending()
@@ -1576,41 +1578,41 @@ object VirtualLauncher {
         }
         // Search can be opened over another default map. Reuse Baidu's in-car task;
         // when it only has a phone task, request a separate task on the map display.
-        val flags = if (page != BaiduMapPage.CRUISE) {
-            val dump = Shell.exec("dumpsys -t 2 activity activities", timeoutMs = 3000)
-            val existing = dump.ok && (baiduActivityOnMapDisplay(displayId, dump.output) != null ||
-                tasksOf(taskIdsByDisplayPkg(dump.output), BaiduCruise.PACKAGE, displayId).isNotEmpty())
-            if (existing) "" else " -f 0x18000000"
-        } else ""
+        val flags = when {
+            page == BaiduMapPage.CRUISE -> ""
+            mapTaskId != null -> " --task $mapTaskId"
+            else -> " -f 0x18000000"
+        }
         if (!current()) return false
         val result = Shell.exec(
             "am start -a android.intent.action.VIEW -d ${shellArgument(page.uri)} " +
-                "-n ${shellArgument(receiver.flattenToString())} --display $displayId$flags",
+                "-n ${shellArgument(receiver.flattenToString())} --display $displayId$flags 2>&1",
             timeoutMs = 8000,
         )
         val ok = current() && result.ok && result.output.contains("Starting:", ignoreCase = true) &&
-            !result.output.contains("Error:", ignoreCase = true)
-        logSink?.invoke("MAP: ${page.label}入口请求 display=$displayId accepted=$ok")
+            !result.output.contains("Error:", ignoreCase = true) && !result.output.contains("Exception", ignoreCase = true)
+        logSink?.invoke("MAP: ${page.label}入口请求 display=$displayId task=${mapTaskId ?: "new-or-default"} accepted=$ok")
         if (ok) ProjectionAppMobileData.note(context, generation, receiver.packageName)
         return ok
     }
 
-    private fun currentBaiduActivity(display: Int): String? {
+    private fun currentBaiduPlacement(display: Int): BaiduMapPlacement {
         val dump = Shell.exec("dumpsys -t 2 activity activities", timeoutMs = 3000)
-        return if (dump.ok) baiduActivityOnMapDisplay(display, dump.output) else null
+        return if (dump.ok) baiduOnMapDisplay(display, dump.output) else BaiduMapPlacement()
     }
 
-    private fun baiduSearchPageVisible(activity: String): Boolean {
-        // Only retain the fragment header and lifecycle flags from this activity. Search
-        // text, saved locations and the rest of the view tree need not leave the shell.
+    private fun baiduSearchPageVisible(activity: BaiduMapActivity): Boolean {
+        // The same component may also exist on the phone. Filter by the task just observed
+        // on the car display. Only task numbers, class names and lifecycle flags leave shell.
         val result = Shell.exec(
-            "dumpsys -t 2 activity $activity | grep -A 4 -E '^[[:space:]]*PoiSearchPage\\{' | " +
-                "sed -nE 's/^[[:space:]]*([[:alnum:]_.$]+)\\{.*/\\1{/p; " +
+            "dumpsys -t 2 activity ${shellArgument(activity.component)} | " +
+                "sed -nE 's/^[[:space:]]*TASK .* id=([0-9]+)([[:space:]].*|$)/TASK \\1/p; " +
+                "s/^[[:space:]]*([[:alnum:]_.$]+)\\{.*/\\1{/p; " +
                 "s/^[[:space:]]*(mState=[0-9]+|mAdded=[a-z]+ mRemoving=[a-z]+|" +
                 "mHidden=[a-z]+ mDetached=[a-z]+)([[:space:]].*|$)/\\1/p'",
             timeoutMs = 3000,
         )
-        return result.ok && hasActiveBaiduSearchPage(result.output)
+        return result.ok && hasActiveBaiduSearchPage(result.output, activity.taskId)
     }
 
     private fun shortcutCurrent(request: ShortcutRequest): Boolean =
@@ -1735,40 +1737,43 @@ object VirtualLauncher {
             if (!current()) return
             // In the dashboard Baidu is normally already running. Resize it before
             // dispatching search so its configuration change cannot dismiss the new page.
-            if (currentBaiduActivity(display) != null) showMap()
+            val before = currentBaiduPlacement(display)
+            if (before.taskId != null) showMap()
             if (!current()) return
-            val searchRequested = sendBaiduPage(ctx, display, BaiduMapPage.DESTINATION, ::current)
-            if (!searchRequested && !sendBaiduPage(ctx, display, BaiduMapPage.HOME, ::current)) {
-                showShortcutNotice(request, "百度地图未打开，请从车端应用页打开百度地图")
-                return
-            }
-            // A VIEW receiver can redirect internally. A placed Baidu window is enough
-            // to show the map; reporting a search page additionally requires its live fragment.
-            var activity: String? = null
-            for (attempt in 0..3) {
+            var searchRequested = sendBaiduPage(ctx, display, BaiduMapPage.DESTINATION, ::current, before.taskId)
+            if (!searchRequested) {
                 if (!current()) return
-                if (attempt > 0) SystemClock.sleep(250)
-                if (!current()) return
-                activity = currentBaiduActivity(display)
-                if (activity != null) break
+                val task = currentBaiduPlacement(display).taskId
+                if (before.taskId != null && before.taskId != task) {
+                    searchRequested = sendBaiduPage(ctx, display, BaiduMapPage.DESTINATION, ::current, task)
+                }
+                if (!searchRequested && !sendBaiduPage(ctx, display, BaiduMapPage.HOME, ::current, task)) {
+                    showShortcutNotice(request, "百度地图未打开，请从车端应用页打开百度地图")
+                    return
+                }
             }
-            if (!current()) return
-            if (activity == null) {
-                logSink?.invoke("SHORTCUT: NAV display=$display placement=unconfirmed")
-                showShortcutNotice(request, "未在车机地图屏检测到百度地图")
-                return
-            }
+            // Reveal the requested car display even if this ROM is late reporting its
+            // foreground window. The old placement gate could leave a successful launch hidden.
             showMap()
+            var placement = before
+            val deadline = SystemClock.elapsedRealtime() + 4000
+            for (delay in listOf(300L, 650L, 1000L)) {
+                if (!current()) return
+                if (SystemClock.elapsedRealtime() + delay > deadline) break
+                SystemClock.sleep(delay)
+                if (!current()) return
+                placement = currentBaiduPlacement(display)
+                val activity = placement.activity ?: continue
+                if (!searchRequested || baiduSearchPageVisible(activity)) {
+                    if (current()) logSink?.invoke("SHORTCUT: NAV display=$display task=${activity.taskId} poiSearch=" +
+                        if (searchRequested) "visible" else "map-home-fallback")
+                    if (!searchRequested) showShortcutNotice(request, "点百度搜索框可选回家或去公司")
+                    return
+                }
+            }
             if (!current()) return
-            if (searchRequested) SystemClock.sleep(450)
-            if (!current()) return
-            // The dispatcher may have finished and handed the search to MapsActivity.
-            val top = currentBaiduActivity(display)
-            val visible = searchRequested && top != null && baiduSearchPageVisible(top)
-            if (!current()) return
-            logSink?.invoke("SHORTCUT: NAV display=$display poiSearch=" +
-                if (visible) "visible" else if (searchRequested) "unconfirmed" else "map-home-fallback")
-            if (!visible) showShortcutNotice(request, "如仍在地图页，点百度搜索框可选回家或去公司")
+            logSink?.invoke("SHORTCUT: NAV display=$display task=${placement.taskId} foreground=${placement.activity != null} poiSearch=unconfirmed")
+            showShortcutNotice(request, "如仍在地图页，点百度搜索框可选回家或去公司")
         }
     }
 

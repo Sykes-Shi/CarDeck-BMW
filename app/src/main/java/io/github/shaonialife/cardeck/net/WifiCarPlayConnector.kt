@@ -183,6 +183,13 @@ class WifiCarPlayConnector(
         }
     }
 
+    /** Correlate the incoming ctrl socket with a specific Android Network before binding it. */
+    fun hasLocalAddress(network: Network, address: String): Boolean = runCatching {
+        connectivityManager.getLinkProperties(network)?.linkAddresses?.any {
+            it.address.hostAddress?.substringBefore('%') == address
+        } == true
+    }.getOrDefault(false)
+
     /**
      * 本机在当前绑定网络上的全部 IPv6 地址。
      *
@@ -221,6 +228,7 @@ class WifiCarPlayConnector(
         requireLocalOnly: Boolean,
         timeoutMillis: Long = 120_000L,
         isCancelled: () -> Boolean = { false },
+        reuseInvitedWifi: () -> JoinResult.Joined? = { null },
     ): JoinResult {
         val specifier =
             buildSpecifier(ssid, passphrase, securityType)
@@ -297,6 +305,7 @@ class WifiCarPlayConnector(
             return JoinResult.Unavailable
         }
         val deadline = SystemClock.uptimeMillis() + timeoutMillis
+        var nextInvitationCheck = SystemClock.uptimeMillis()
         while (SystemClock.uptimeMillis() < deadline) {
             if (isCancelled() || !binding.isCurrent(newCallback)) {
                 release(newCallback)
@@ -304,6 +313,12 @@ class WifiCarPlayConnector(
             }
             try {
                 if (latch.await(200, TimeUnit.MILLISECONDS)) break
+                if (binding.current(newCallback) == null && SystemClock.uptimeMillis() >= nextInvitationCheck) {
+                    // The MGU may have reached us on a separate system WLAN for which this
+                    // specifier never receives onAvailable. Its owner is replaced on a valid handoff.
+                    reuseInvitedWifi()?.let { return it }
+                    nextInvitationCheck = SystemClock.uptimeMillis() + 750L
+                }
             } catch (_: InterruptedException) {
                 release(newCallback)
                 return JoinResult.Unavailable

@@ -137,18 +137,12 @@ class SettingsActivity :
     }
 
     private fun applyMenuStyle(index: Int) {
-        val ripple =
-            runCatching {
-                val out = android.util.TypedValue()
-                theme.resolveAttribute(android.R.attr.selectableItemBackground, out, true)
-                getDrawable(out.resourceId)
-            }.getOrNull()
         menus.forEachIndexed { i, menu ->
-            menu.background = if (i == index) getDrawable(R.drawable.bg_menu_item) else ripple
+            menu.isActivated = i == index
             for (c in 0 until menu.childCount) {
                 val child = menu.getChildAt(c)
                 if (child is TextView) {
-                    child.setTextColor(if (i == index) 0xFFF5F5F7.toInt() else 0xFF8E8E93.toInt())
+                    child.setTextColor(getColor(if (menu.isActivated) R.color.car_text else R.color.car_text_muted))
                     child.paint.isFakeBoldText = i == index
                 }
             }

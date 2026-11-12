@@ -259,6 +259,44 @@ object SessionController {
     @Volatile
     var currentClient: AirPlayClient? = null
 
+    private val userScreenRefreshBusy = AtomicBoolean(false)
+
+    fun canRefreshBmwScreen(): Boolean = currentClient?.let {
+        !it.cancelled && !connectCancelled && videoSender?.isRunning == true && BmwControlIapCompatibility.matches(it.receiverIdentity())
+    } == true
+
+    fun requestBmwScreenRefresh() {
+        val client = currentClient ?: return
+        val sender = videoSender ?: return
+        val revision = client.screenRevisionAtTap() ?: return
+        if (!canRefreshBmwScreen() || !userScreenRefreshBusy.compareAndSet(false, true)) return
+        Bg.run("bmw-user-screen-return") {
+            try {
+                val reason = refreshBmwScreen(client, sender, revision, userRequested = true)
+                if (currentClient === client && !client.cancelled && !connectCancelled) {
+                    val message = when (reason) {
+                        "frame_requested" -> "已请求刷新投屏画面"
+                        "receiver_owns_screen", "native_activity_active" ->
+                            "宝马仍在使用屏幕。请在电话或倒车结束后，在 iDrive 点「Apple CarPlay」"
+                        else -> "车机画面尚未恢复，请在 iDrive 点「Apple CarPlay」"
+                    }
+                    uiHintSink?.invoke(message)
+                }
+            } finally {
+                userScreenRefreshBusy.set(false)
+            }
+        }
+    }
+
+    private fun refreshBmwScreen(client: AirPlayClient, sender: VideoSender, revision: Long, userRequested: Boolean): String {
+        fun live() = currentClient === client && !client.cancelled && !connectCancelled && videoSender === sender && sender.isRunning
+        if (!live()) return "session_changed"
+        val result = client.refreshReleasedScreen(revision, userRequested)
+        val refreshed = result.accepted && live() && client.controllerInputRevision == revision && sender.requestKeyFrame()
+        appendLog("BMW-SCREEN: refresh user=$userRequested revision=$revision reason=${result.reason} keyFrame=$refreshed")
+        return if (refreshed) "frame_requested" else result.reason
+    }
+
     internal fun shortcutCalibrationGeneration(): Long? {
         val client = currentClient ?: return null
         if (client.cancelled || connectCancelled || client.controllerInputRevision == null ||
@@ -727,6 +765,7 @@ object SessionController {
         shellReady: Boolean,
         flight: WifiJoinOwnership.Flight,
         beforeDedicatedRequest: Boolean = false,
+        invitedAddress: String? = null,
     ): WifiCarPlayConnector.JoinResult.Joined? {
         if (!isWifiJoinCurrent(flight)) return null
         val connector = wifiConnector ?: return null
@@ -735,6 +774,7 @@ object SessionController {
         if (!isWifiJoinCurrent(flight)) return null
         val local = connector.connectedNetwork(ssid, systemSsid, allowSystemWifi = false)
         val candidate = local ?: connector.connectedNetwork(ssid, systemSsid, allowSystemWifi = true) ?: return null
+        if (invitedAddress != null && !connector.hasLocalAddress(candidate, invitedAddress)) return null
         if (local == null && !wifiJoins.mayReuseSystemWifi(flight) { connector.hasIndependentInternet(candidate, beforeDedicatedRequest) }) return null
         if (!bindCarWifiAndRegister(ssid, flight, candidate, allowSystemWifi = local == null)) return null
         return connector.currentNetwork?.let { WifiCarPlayConnector.JoinResult.Joined(it) }
@@ -749,6 +789,7 @@ object SessionController {
         reuseConnectedCarWifi(wifi.ssid, shellReady, flight, beforeDedicatedRequest = true)?.let { return it }
         if (!isWifiJoinCurrent(flight)) return null
         val hasFallback = alreadyAssociated(wifi.ssid, shellReady)
+        val receiver = selectedCtrlReceiver()
         phaseHint = "正在加入车机热点 ${wifi.ssid}…（用于车机投屏）"
         appendLog(">>> 以应用专属网络加入 \"${wifi.ssid}\"（投屏绑定本进程，其它应用联网由系统及 VPN 决定）")
         val result = synchronized(wifiBindLock) {
@@ -760,6 +801,14 @@ object SessionController {
                 requireLocalOnly = wifiJoins.routeChoice(flight) != WifiJoinOwnership.RouteChoice.SYSTEM_WIFI,
                 timeoutMillis = if (hasFallback) SPECIFIER_WITH_EXISTING_WLAN_MS else SPECIFIER_JOIN_TIMEOUT_MS,
                 isCancelled = { connectCancelled || !wifiJoins.isCurrent(flight.epoch) },
+                reuseInvitedWifi = invited@{
+                    if (receiver == null || receiver != selectedCtrlReceiver()) return@invited null
+                    val address = ctrlAdvertiser?.invitations?.localAddress(android.os.SystemClock.elapsedRealtime(), receiver)
+                        ?: return@invited null
+                    reuseConnectedCarWifi(wifi.ssid, shellReady, flight, invitedAddress = address)?.also {
+                        appendLog("CTRL: 已核对本车邀请所在的 Wi-Fi，提前完成热点交接")
+                    }
+                },
             )
             if (joined is WifiCarPlayConnector.JoinResult.Joined && isWifiJoinCurrent(flight) &&
                 connector.currentNetwork == joined.network
@@ -1227,6 +1276,64 @@ object SessionController {
         bluetoothClient?.detachCurrentSession()
     }
 
+    private fun selectedCtrlReceiver(): Long? =
+        appContext?.let { TargetDevicePrefs.get(it)?.address }?.replace(":", "")?.toLongOrNull(16)
+
+    private class BmwRecoveryInvite(val network: android.net.Network, val take: () -> Boolean)
+
+    /** Called under wifiBindLock for an established MGU stream. The old TCP socket may still
+     * look locally open after a reset. Release the media resources while retaining the WLAN
+     * and the Bluetooth listener. Only a NEW invitation on that WLAN can start this handoff. */
+    private fun endBmwStream(
+        attempt: SessionAttemptOwnership.Attempt<android.net.Network>,
+        epoch: WifiJoinOwnership.Epoch,
+        endpoint: Iap2SenderSession.CarPlayEndpoint,
+        receiver: Long?,
+    ) {
+        val connector = wifiConnector
+        val network = connector?.currentNetwork?.takeIf { sessionAttempts.matches(attempt, it) }
+        val advertiser = ctrlAdvertiser
+        val invitations = advertiser?.invitations
+        val countAtEnd = invitations?.count ?: 0
+        sessionAttempts.cancel()
+        retireSessionResources()
+        phaseHint = "投屏已结束，等待宝马重新连接"
+        if (connector == null || network == null || advertiser == null || invitations == null || receiver == null) return
+        Bg.run("bmw-stream-reconnect") {
+            fun connectionCurrent() = !connectCancelled && wifiJoins.isCurrent(epoch) &&
+                wifiConnector === connector && connector.currentNetwork == network && boundCarSsid == endpoint.ssid &&
+                ctrlAdvertiser === advertiser && advertiser.invitations === invitations && selectedCtrlReceiver() == receiver
+            fun stillWaiting() = connectionCurrent() && sessionAttempts.owns(attempt)
+            synchronized(wifiBindLock) {
+                if (!stillWaiting()) return@run
+                advertiser.ensureForNetwork(endpoint.ssid, force = true, network = network)
+                appendLog("CTRL: 已清理中断会话，等待本车在当前 Wi-Fi 发出新的连接邀请")
+            }
+            val deadline = android.os.SystemClock.elapsedRealtime() + BMW_RECOVERY_INVITE_WAIT_MS
+            while (android.os.SystemClock.elapsedRealtime() < deadline && stillWaiting()) {
+                val address = invitations.localAddress(android.os.SystemClock.elapsedRealtime(), receiver, countAtEnd)
+                if (address != null && connector.hasLocalAddress(network, address)) {
+                    synchronized(wifiBindLock) {
+                        if (!stillWaiting()) return@run
+                        if (!sessionStarting.get() && connector.validatedCurrentNetwork() == network) {
+                            // The worker consumes an unexpired invitation at pairing time. A receipt
+                            // observed on this handle cannot authorize a new association with the same SSID.
+                            val invite = BmwRecoveryInvite(network) {
+                                connector.hasLocalAddress(network, address) &&
+                                    invitations.take(android.os.SystemClock.elapsedRealtime(), setOf(address), receiver, countAtEnd)
+                            }
+                            endpointBrowser?.stop()
+                            val fresh = endpoint.copy(ipAddresses = emptyList(), airPlayPort = 0, preferCtrlInvitation = true)
+                            onCarPlayEndpoint(fresh, "宝马重新邀请", ::connectionCurrent, invite)
+                            return@run
+                        }
+                    }
+                }
+                Thread.sleep(200)
+            }
+        }
+    }
+
     /**
      * 等车机 ctrl 邀请（`GET /ctrl-int/1/connect`）——catplay 的连接触发点。
      *
@@ -1250,9 +1357,7 @@ object SessionController {
             (listOfNotNull(wifiConnector?.localIpv4Address()) + wifiConnector?.localIpv6Addresses().orEmpty())
                 .map { it.substringBefore('%') }.toSet()
         } else emptySet()
-        val selectedReceiver = if (preferCtrlInvitation) {
-            appContext?.let { TargetDevicePrefs.get(it)?.address }?.replace(":", "")?.toLongOrNull(16)
-        } else null
+        val selectedReceiver = if (preferCtrlInvitation) selectedCtrlReceiver() else null
         val timeoutMillis = if (recoveringBmw) BMW_RECOVERY_INVITE_WAIT_MS else CTRL_INVITE_WAIT_MS
         if (recoveringBmw) {
             phaseHint = "车机 Wi-Fi 已恢复，等待宝马重新邀请…"
@@ -1870,10 +1975,12 @@ object SessionController {
         endpoint: Iap2SenderSession.CarPlayEndpoint,
         source: String,
         isCurrent: () -> Boolean,
+        recovery: BmwRecoveryInvite? = null,
     ) {
         val context = appContext ?: return
         val wifiEpoch = wifiJoins.currentEpoch() ?: return
         if (connectCancelled || !isCurrent()) return
+        val receiverAtStart = selectedCtrlReceiver()
         // 冗余端点防护：接收端控制器（DiPlay 实测）在我们配对推流后才完成既有的
         // RFCOMM 重连并重发 0x4301。此时重启配对会 retireSession 掉健康会话
         // （编码器 stop 竞态 = 「连上后自动断开」循环的根因）。推流中的端点一律忽略；
@@ -1954,10 +2061,9 @@ object SessionController {
             // 网络发布与延期失联通知共锁；广播与发现器不能分别读到不同代网络。
             val ready = synchronized(wifiBindLock) {
                 val network = if (bound && attemptActive()) wifiConnector?.validatedCurrentNetwork() else null
-                if (network == null) {
+                if (network == null || !sessionAttempts.bind(attempt, network, recovery?.network)) {
                     false
                 } else {
-                    sessionAttempts.bind(attempt, network)
                     ctrlAdvertiser?.ensureForNetwork(endpoint.ssid, force = true, network = network)
                     endpointBrowser?.ensureForNetwork(
                         network,
@@ -1989,7 +2095,12 @@ object SessionController {
                         finishStart()
                         return@run
                     }
-                    if (endpointSelfContained) {
+                    if (recovery != null) {
+                        synchronized(wifiBindLock) {
+                            requireAttempt()
+                            check(recovery.take()) { "宝马重连邀请已失效，等待车机再次发起连接" }
+                        }
+                    } else if (endpointSelfContained) {
                         appendLog("AIRPLAY: 0x4301 端点完整（${endpoint.ipAddresses.firstOrNull()}:${endpoint.airPlayPort}）——直接配对，不等 ctrl 邀请")
                     } else {
                         // 等 ctrl 邀请（catplay CarPlayCtrlServer：邀请=车机已发现手机且
@@ -2031,6 +2142,14 @@ object SessionController {
                                 if (attemptActive()) enrichEndpointFromBrowser(current, source) else null
                             },
                             currentCtrlInviteCount = { ctrlAdvertiser?.inviteCount ?: 0 },
+                            createControlSocket = {
+                                if (recovery == null) java.net.Socket() else {
+                                    check(isCurrent() && sessionAttempts.matches(attempt, recovery.network)) {
+                                        "宝马重连网络或目标已变化"
+                                    }
+                                    recovery.network.socketFactory.createSocket()
+                                }
+                            },
                             retryTick = { attempt ->
                                 synchronized(wifiBindLock) {
                                     requireAttempt()
@@ -2068,6 +2187,9 @@ object SessionController {
                                 liveAudio?.captureDiagnosticLines()?.forEach { line ->
                                     appendLog("SESSION-DIAG: first_control_end $line")
                                 }
+                                if (!connectCancelled && !created.cancelled && currentClient === created &&
+                                    videoSender === liveVideo && sessionAttempts.active(attempt)
+                                ) liveVideo.onControlConnectionLost()
                             }
                             // 车机媒体键（iAP2 0x6802 通路）：方向盘/面板的上一曲、下一曲。
                             // 放在这里而不是调用点，保证重连重建 client 时也挂得上。
@@ -2468,9 +2590,17 @@ object SessionController {
                                             val update = uiRecoveryClient.respondToModeChange(command)
                                             val stillLive = currentClient === uiRecoveryClient &&
                                                 !uiRecoveryClient.cancelled && !connectCancelled
-                                            if (update.accepted && update.screenReturned && stillLive && videoSender === expectedVideoSender) {
-                                                val forced = expectedVideoSender?.requestKeyFrame() == true
-                                                appendLog("EXPERIMENT v13: BMW 主屏已归还 accepted=${update.accepted} keyFrameRequested=$forced")
+                                            val revision = update.returnedScreenRevision
+                                            if (revision != null && stillLive && expectedVideoSender != null && videoSender === expectedVideoSender) {
+                                                val forced = update.accepted && uiRecoveryClient.controllerInputRevision == revision &&
+                                                    expectedVideoSender.requestKeyFrame()
+                                                appendLog("BMW-SCREEN: 主屏已归还 revision=$revision accepted=${update.accepted} keyFrame=$forced")
+                                                // The head unit can still be switching from native UI when the first IDR arrives.
+                                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                                    Bg.run("bmw-returned-screen") {
+                                                        refreshBmwScreen(uiRecoveryClient, expectedVideoSender, revision, userRequested = false)
+                                                    }
+                                                }, 600L)
                                             }
                                         }
                                     }
@@ -2602,10 +2732,16 @@ object SessionController {
                                             keepAliveWithStats = setup.keepAliveSendStatsAsBody,
                                             onEnded = ended@{
                                                 synchronized(wifiBindLock) {
-                                                    if (!sessionAttempts.owns(attempt) || currentClient !== client) return@ended
+                                                    if (connectCancelled || client.cancelled || !sessionAttempts.active(attempt) ||
+                                                        currentClient !== client || videoSender !== sessionVideoSender) return@ended
                                                     // 会话真实结束：解除静默降噪（客户端恢复探测/重连）
                                                     appendLog(">>> CarPlay 会话结束（推流终止）——恢复蓝牙探测")
                                                     appContext?.let { io.github.shaonialife.cardeck.net.ProjectionAppMobileData.stop(it, VirtualLauncher.sessionGeneration()) }
+                                                    attributeAudioTeardown()
+                                                    if (isBmw) {
+                                                        endBmwStream(attempt, wifiEpoch, endpoint, receiverAtStart)
+                                                        return@ended
+                                                    }
                                                     BtSessionGate.sessionActive = false
                                                     // 车机掉线类结束（无用户断开操作）：暗幕必须收掉。
                                                     // 这条路径不经过 retireSession（VirtualLauncher 仍挂着），
@@ -2617,9 +2753,6 @@ object SessionController {
                                                     appContext?.let { ctx ->
                                                         AppOrientationCompat.resetAllAsync(ctx, ::appendLog)
                                                     }
-                                                    // 音频拆链归因：起过音频却很快被拆 → 记下该档位
-                                                    // 不兼容，下次连接自动换档（见 attributeAudioTeardown）。
-                                                    attributeAudioTeardown()
                                                 }
                                             },
                                         )
@@ -2712,7 +2845,7 @@ object SessionController {
                                 // 窗口内到达，会被暂存但没人消费。此处补投一次——车机等 15s
                                 // 无人连入就拆链，错过这一投就是整轮失败（2026-10-18 分析）。
                                 val pending = pendingEndpointUpdate
-                                if (pending != null && !connectCancelled) {
+                                if (pending != null && !connectCancelled && recovery == null) {
                                     pendingEndpointUpdate = null
                                     appendLog(">>> 收尾时发现暂存的晚到 0x4301——立即按新端点重走一轮")
                                     Bg.run("late-endpoint-retry") {
@@ -2742,7 +2875,8 @@ object SessionController {
                 finishStart()
                 return@run
             }
-            val bound = ensureCarWifi(wifiConfig, wifiEpoch)
+            val bound = if (recovery == null) ensureCarWifi(wifiConfig, wifiEpoch)
+                else wifiConnector?.validatedCurrentNetwork() == recovery.network
             if (attemptActive()) continueWithNetwork(bound) else finishStart()
         }
     }

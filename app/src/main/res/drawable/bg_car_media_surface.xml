@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#FF202A37" />
+    <gradient android:angle="315" android:startColor="@color/car_control" android:endColor="@color/car_surface" />
     <corners android:radius="16dp" />
 </shape>

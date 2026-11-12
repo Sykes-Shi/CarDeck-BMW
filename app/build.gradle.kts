@@ -66,7 +66,7 @@ android {
         debug {
             // Standalone experimental copy: keep the official installation and data intact.
             applicationIdSuffix = ".bmwprobe"
-            versionNameSuffix = "-bmwprobe33"
+            versionNameSuffix = "-bmwprobe35"
         }
     }
 
@@ -95,7 +95,7 @@ android {
 // 只提升独立诊断包的升级序号，官方 release 的版本和签名配置保持原值。
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
-        variant.outputs.forEach { output -> output.versionCode.set(145) }
+        variant.outputs.forEach { output -> output.versionCode.set(147) }
     }
 }
 

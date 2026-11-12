@@ -6,6 +6,8 @@ import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.widget.ImageView
+import androidx.core.graphics.ColorUtils
+import io.github.shaonialife.cardeck.R
 
 /** 复用后台已解码的小封面；柔化交给渲染器，主线程不重新解码或逐像素处理。 */
 internal class MediaBackdrop(private val image: ImageView, private val veil: View) {
@@ -28,9 +30,15 @@ internal class MediaBackdrop(private val image: ImageView, private val veil: Vie
         if (shownColor != color) {
             shownColor = color
             image.setBackgroundColor(color)
+            val surface = image.context.getColor(R.color.car_surface)
+            // Keep secondary text readable even on a white album over a light wallpaper.
+            val top = ColorUtils.blendARGB(color, surface, 0.42f)
             veil.background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf((color and 0xFFFFFF) or (190 shl 24), 0xE6111820.toInt()),
+                intArrayOf(
+                    ColorUtils.setAlphaComponent(top, 238),
+                    surface,
+                ),
             )
         }
     }

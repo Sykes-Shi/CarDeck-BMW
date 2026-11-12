@@ -644,6 +644,7 @@ class MainActivity : AppCompatActivity() {
         }
         heroSubline = findViewById(R.id.heroSubline)
         heroStats = findViewById(R.id.heroStats)
+        findViewById<View>(R.id.btnRefreshBmwScreen).setOnClickListener { SessionController.requestBmwScreenRefresh() }
         heroProgress = findViewById(R.id.heroProgress)
         ctaButton = findViewById(R.id.ctaButton)
         ctaIcon = findViewById(R.id.ctaIcon)
@@ -1150,6 +1151,8 @@ class MainActivity : AppCompatActivity() {
             }
         heroProgress.visibility = if (s == HeroState.CONNECTING) View.VISIBLE else View.GONE
         heroStats.visibility = if (s == HeroState.CONNECTED) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.btnRefreshBmwScreen).visibility =
+            if (s == HeroState.CONNECTED && SessionController.canRefreshBmwScreen()) View.VISIBLE else View.GONE
 
         when (s) {
             HeroState.IDLE -> {

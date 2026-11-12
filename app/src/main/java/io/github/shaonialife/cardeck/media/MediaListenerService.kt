@@ -134,7 +134,7 @@ class MediaListenerService : NotificationListenerService() {
                 val callback =
                     object : android.media.session.MediaController.Callback() {
                         override fun onPlaybackStateChanged(state: PlaybackState?) {
-                            refresh()
+                            refresh(playbackEvent = true)
                         }
 
                         override fun onMetadataChanged(metadata: MediaMetadata?) {
@@ -158,7 +158,7 @@ class MediaListenerService : NotificationListenerService() {
     }
 
     /** 从活跃会话提取正在播放态：优先 PLAYING 的会话，否则保留第一个有元数据的。 */
-    private fun refresh() {
+    private fun refresh(playbackEvent: Boolean = false) {
         if (!connected) return
         val controllers =
             try {
@@ -204,7 +204,7 @@ class MediaListenerService : NotificationListenerService() {
                     backdropColor = artCache[controller.packageName]?.color ?: ArtworkTone.DEFAULT,
                 )
             }
-        MediaSessionsState.publishAll(snapshots, primary?.packageName)
+        MediaSessionsState.publishAll(snapshots, primary?.packageName, playbackEvent)
     }
 
     private fun lyricsFor(
@@ -349,6 +349,9 @@ internal inline fun preferredLyrics(player: PlayerLyrics?, online: () -> PlayerL
     player ?: online() ?: local()
 
 object MediaSessionsState {
+    private const val LYRIC_LEAD_MS = 300L
+    internal const val PROGRESS_TICK_MS = 1_000L
+
     data class NowPlaying(
         val title: String?,
         val artist: String?,
@@ -386,7 +389,29 @@ object MediaSessionsState {
 
         fun lyricTextAt(elapsedRealtimeMs: Long, maxLines: Int = 2): String? {
             if (positionMs < 0 && lyrics?.synchronized == true) return null
-            return lyrics?.textAt(displayPositionAt(elapsedRealtimeMs), maxLines)
+            return lyrics?.textAt(lyricPositionAt(elapsedRealtimeMs), maxLines)
+        }
+
+        private fun lyricPositionAt(elapsedRealtimeMs: Long): Long =
+            displayPositionAt(elapsedRealtimeMs).coerceAtMost(Long.MAX_VALUE - LYRIC_LEAD_MS) + LYRIC_LEAD_MS
+
+        /** Wake at the next displayed line, or at the normal progress tick if it comes first. */
+        internal fun nextMediaTickDelayMs(elapsedRealtimeMs: Long): Long {
+            if (lyrics?.synchronized != true || !playing || positionMs < 0 || anchoredAtMs <= 0 ||
+                !playbackSpeed.isFinite() || playbackSpeed == 0f
+            ) return PROGRESS_TICK_MS
+            val at = lyricPositionAt(elapsedRealtimeMs)
+            val distance = if (playbackSpeed > 0) {
+                val next = lyrics.lines.firstOrNull { it.timeMs > at } ?: return PROGRESS_TICK_MS
+                if (durationMs > 0 && next.timeMs - LYRIC_LEAD_MS > durationMs) return PROGRESS_TICK_MS
+                next.timeMs - at
+            } else {
+                val current = lyrics.lines.lastOrNull { it.timeMs <= at } ?: return PROGRESS_TICK_MS
+                if (current.timeMs <= LYRIC_LEAD_MS) return PROGRESS_TICK_MS
+                at - current.timeMs + 1
+            }
+            return kotlin.math.ceil(distance / kotlin.math.abs(playbackSpeed.toDouble()))
+                .toLong().coerceIn(1L, PROGRESS_TICK_MS)
         }
     }
 
@@ -399,11 +424,13 @@ object MediaSessionsState {
 
     fun forPackage(packageName: String): NowPlaying? = packageStates[packageName]
 
-    fun publishAll(values: List<NowPlaying>, selectedPackage: String?) {
+    fun publishAll(values: List<NowPlaying>, selectedPackage: String?, playbackEvent: Boolean = false) {
         val next = values.mapNotNull { value -> value.pkg?.let { it to value } }.toMap()
         val changed = packageStates.keys != next.keys || next.any { (pkg, value) -> !sameContent(packageStates[pkg], value) }
         packageStates = next
-        publishNow(next[selectedPackage], changed)
+        // A seek or speed change may keep the same title, lyrics and play/pause state.
+        // Refresh its displayed line and deadline immediately; periodic sampling stays quiet.
+        publishNow(next[selectedPackage], changed || playbackEvent)
     }
 
     private fun sameContent(old: NowPlaying?, value: NowPlaying?): Boolean =

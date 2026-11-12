@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 原生应用屏约 1050×431dp；封面按可用高度收缩，不借用桌面的超采样密度。 -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/carMediaRoot" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#FF111820">
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/carMediaRoot" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#FF111820">
     <ImageView android:id="@+id/carMediaBackdrop" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:importantForAccessibility="no" />
     <View android:id="@+id/carMediaBackdropVeil" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#D9111820" />
 <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingVertical="12dp">
     <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical">
-        <TextView android:id="@+id/carMediaBack" android:layout_width="48dp" android:layout_height="48dp" android:gravity="center" android:text="‹" android:textSize="30sp" android:textColor="#FFF5F7FA" android:contentDescription="返回首页" android:background="@drawable/bg_car_media_button" />
-        <TextView android:id="@+id/carMediaSource" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="16dp" android:maxLines="1" android:ellipsize="end" android:text="车载播放" android:textSize="19sp" android:textColor="#FFF5F7FA" />
-        <TextView android:id="@+id/carMediaOpenOriginal" android:layout_width="wrap_content" android:layout_height="48dp" android:paddingHorizontal="18dp" android:gravity="center" android:text="打开网易云选歌" android:textSize="15sp" android:textColor="#FFDBF6F7" android:background="@drawable/bg_car_media_button" />
+        <ImageView android:id="@+id/carMediaBack" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/ic_chevron_left" android:scaleType="fitCenter" android:padding="13dp" app:tint="@color/car_text" android:contentDescription="返回首页" android:background="@drawable/bg_car_media_button" />
+        <TextView android:id="@+id/carMediaSource" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="16dp" android:maxLines="1" android:ellipsize="end" android:text="车载播放" android:textSize="19sp" android:textColor="@color/car_text" />
+        <TextView android:id="@+id/carMediaOpenOriginal" android:layout_width="wrap_content" android:layout_height="48dp" android:paddingHorizontal="18dp" android:gravity="center" android:text="打开网易云选歌" android:textSize="15sp" android:fontFamily="sans-serif-medium" android:textColor="@color/car_text" android:background="@drawable/bg_car_media_button" />
     </LinearLayout>
     <LinearLayout android:id="@+id/carMediaBody" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="10dp" android:gravity="center_vertical">
         <FrameLayout android:id="@+id/carMediaCoverFrame" android:layout_width="280dp" android:layout_height="280dp" android:layout_marginEnd="20dp" android:background="@drawable/bg_car_media_surface">
-            <TextView android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="♪" android:textSize="84sp" android:textColor="#FF9CB8C9" android:importantForAccessibility="no" />
+            <TextView android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="♪" android:textSize="84sp" android:textColor="@color/car_text_muted" android:importantForAccessibility="no" />
             <ImageView android:id="@+id/carMediaCover" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:importantForAccessibility="no" />
         </FrameLayout>
         <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical">

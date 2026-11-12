@@ -13,35 +13,60 @@ internal enum class BaiduMapPage(val uri: String, val label: String) {
     HOME("baidumap://map?src=andr.shaonialife.cardeck", "百度地图首页"),
 }
 
-/** Only accept a resumed Baidu activity on the requested non-phone display. */
-internal fun baiduActivityOnMapDisplay(display: Int, dump: String): String? {
-    if (display <= 0) return null
+internal data class BaiduMapActivity(val component: String, val taskId: Int)
+internal data class BaiduMapPlacement(
+    val activity: BaiduMapActivity? = null,
+    val taskId: Int? = null,
+)
+
+/** Android 16 prints decimal ActivityRecord identities but accepts hex dump selectors.
+ * Use the task ID and component instead; both also identify the target on older versions. */
+internal fun baiduOnMapDisplay(display: Int, dump: String): BaiduMapPlacement {
+    if (display <= 0) return BaiduMapPlacement()
     var onTarget = false
+    var sawTop = false
+    var top: BaiduMapActivity? = null
+    var existingTask: Int? = null
     for (line in dump.lineSequence()) {
         val displayHeader = activityDisplay.find(line)
         if (displayHeader != null) {
             if (onTarget) break
             onTarget = displayHeader.groupValues[1].toIntOrNull() == display
-        } else if (onTarget) {
-            val top = resumedActivity.find(line) ?: continue
-            return top.groupValues[1].takeIf { top.groupValues[2] == BaiduCruise.PACKAGE }
+            continue
+        }
+        if (!onTarget) continue
+        val record = displayActivity.find(line) ?: continue
+        val task = record.groupValues[3].toIntOrNull() ?: continue
+        val component = record.groupValues[2]
+        val baidu = component.substringBefore('/') == BaiduCruise.PACKAGE
+        if (baidu && existingTask == null) existingTask = task
+        if (!sawTop && !record.groupValues[1].startsWith("* Hist")) {
+            sawTop = true
+            if (baidu) top = BaiduMapActivity(component, task)
         }
     }
-    return null
+    return BaiduMapPlacement(top, top?.taskId ?: existingTask)
 }
 
-private val activityDisplay = Regex("""^\s*Display #(\d+)\s*\(activities[^)]*\):""")
-private val resumedActivity = Regex("""^\s*(?:topResumedActivity|mResumedActivity)\s*[:=]\s*ActivityRecord\{([a-fA-F0-9]{1,8})\s+(?:u\d+\s+|\d+:)([\w.]+)/""")
+private val activityDisplay = Regex("""^\s*Display(?:\s+#|:\s*mDisplayId=)(\d+)\b""")
+private val displayActivity = Regex(
+    """^\s*(topResumedActivity|mResumedActivity|Resumed|\* Hist\s+#\d+)\s*[:=]\s*ActivityRecord\{[0-9a-fA-F]+\s+(?:u\d+\s+|\d+:)([\w.]+/[\w.$]+)(?:/u\d+)?\s+t(\d+)\b""",
+)
 
 /** In the activity dump, an old search fragment can remain in the back stack while the map is open. */
-internal fun hasActiveBaiduSearchPage(dump: String): Boolean {
+internal fun hasActiveBaiduSearchPage(dump: String, targetTask: Int): Boolean {
     var resumed = false
     var added = false
     var inSearchPage = false
+    var inTask = false
     for (line in dump.lineSequence().map(String::trim)) {
         when {
+            line.startsWith("TASK ") -> {
+                inTask = line == "TASK $targetTask"
+                inSearchPage = false
+            }
             line.endsWith("{") -> {
-                inSearchPage = line == "PoiSearchPage{"
+                inSearchPage = inTask && line == "PoiSearchPage{"
                 resumed = false
                 added = false
             }
