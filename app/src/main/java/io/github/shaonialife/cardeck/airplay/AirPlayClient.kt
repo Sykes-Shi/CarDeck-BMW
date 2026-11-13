@@ -98,6 +98,16 @@ class AirPlayClient(
     @Volatile
     private var negotiatedInfo: Map<*, *>? = null
 
+    @Volatile private var liveNightMode: Boolean? = null
+    internal fun receiverNightMode(): Boolean? = liveNightMode ?: negotiatedInfo?.get("nightMode") as? Boolean
+
+    internal fun acceptNightMode(params: Map<*, *>?): Boolean {
+        val value = params?.get("nightMode") as? Boolean ?: return false
+        val changed = receiverNightMode() != value
+        liveNightMode = value
+        return changed
+    }
+
     /** 仅取本机统计，不发送请求；保留车机先关闭控制口时的音视频状态。 */
     @Volatile var onControlReadEnded: (() -> Unit)? = null
 
@@ -664,6 +674,23 @@ class AirPlayClient(
     var controllerInputRevision: Long? = null
         private set
 
+    @Volatile var retryableScreenLoan: Long? = null
+        private set
+
+    internal fun rememberBorrowedMedia(token: String?) = synchronized(modeStateLock) {
+        if (!cancelled) borrowGuardLocked().rememberMedia(token)
+    }
+
+    internal fun takeReturnedMedia(revision: Long): String? = synchronized(modeStateLock) {
+        if (cancelled || controllerInputRevision != revision) null else borrowGuardLocked().takeDeferredMedia(revision)
+    }
+
+    internal fun cancelForScreenReconnect(revision: Long): Boolean = synchronized(modeStateLock) {
+        if (cancelled || !borrowGuardLocked().canRetryScreenLoan(revision)) return@synchronized false
+        cancelled = true
+        true
+    }
+
     private fun borrowGuardLocked(): BmwModeBorrowGuard =
         bmwBorrowGuard ?: BmwModeBorrowGuard(receiverIdentity()).also { bmwBorrowGuard = it }
 
@@ -686,7 +713,11 @@ class AirPlayClient(
     /** Never alters ownership. Retry an unacknowledged return, or redraw a confirmed grant. */
     fun refreshReleasedScreen(expectedRevision: Long, userRequested: Boolean): UiRestoreResult = synchronized(modeStateLock) {
         if (cancelled) return@synchronized UiRestoreResult(false, "client_cancelled")
-        val reason = borrowGuardLocked().screenRefreshBlock(expectedRevision)
+        val guard = borrowGuardLocked()
+        val reason = guard.screenRefreshBlock(expectedRevision)
+        if (userRequested && reason == "receiver_owns_screen") {
+            return@synchronized restoreRequestedUi(expectedRevision, refreshLoan = true)
+        }
         if (reason != null) return@synchronized UiRestoreResult(false, reason)
         if ((userRequested || controllerInputRevision != expectedRevision) && !sendCurrentModesLocked(reassertingOwnership = true)) {
             return@synchronized UiRestoreResult(false, "modes_failed")
@@ -695,9 +726,16 @@ class AirPlayClient(
     }
 
     /** requestUI 执行时核对状态代次，再按当前借屏/原生归属决定是否恢复。 */
-    fun restoreRequestedUi(expectedRevision: Long): UiRestoreResult = synchronized(modeStateLock) {
+    fun restoreRequestedUi(expectedRevision: Long, refreshLoan: Boolean = false): UiRestoreResult = synchronized(modeStateLock) {
         if (cancelled) return@synchronized UiRestoreResult(false, "client_cancelled")
-        val decision = borrowGuardLocked().restoreRequestedUi(expectedRevision)
+        val guard = borrowGuardLocked()
+        val decision = guard.restoreRequestedUi(expectedRevision, refreshLoan)
+        if (decision.reason == "awaiting_screen_return") {
+            // Tell the receiver exactly which resources are still on its side. A 200
+            // here acknowledges the status message only; it is not a screen grant.
+            val sent = sendCurrentModesLocked(reassertingOwnership = true)
+            return@synchronized UiRestoreResult(false, if (sent) "awaiting_screen_return" else "loan_refresh_failed")
+        }
         if (!decision.allowed) return@synchronized UiRestoreResult(false, decision.reason)
         // Reasserting the same ownership does not revoke the existing grant while waiting
         // for its ACK. A real ownership transition or a failed ACK invalidates it.
@@ -713,6 +751,7 @@ class AirPlayClient(
         val before = guard.isScreenAvailableToController()
         val mediaBefore = guard.mediaEpoch()
         val result = guard.apply(command)
+        retryableScreenLoan = guard.captureUiRestoreRevision().takeIf(guard::canRetryScreenLoan)
         if (mediaBefore != null && guard.mediaEpoch() == null) log("AUDIO: 宝马原车通话开始，暂缓发送实时媒体")
         receiverAudioClock.noteBorrow(guard.isAudioBorrowed())
         val returned = guard.consumeScreenReturn(before)

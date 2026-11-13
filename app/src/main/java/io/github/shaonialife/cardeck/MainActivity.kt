@@ -192,13 +192,10 @@ class MainActivity : AppCompatActivity() {
                 log("WALLPAPER: 未选择图片")
                 return@registerForActivityResult
             }
-            val ok =
-                WallpaperStore
-                    .setFromUri(this, uri)
-            log(
-                "WALLPAPER: ${if (ok) "壁纸已更新（会话进行中约 1 秒内上车；下次连接自动生效）" else "保存失败"}",
-            )
-            if (ok) snack("壁纸已更新") else snack("保存失败")
+            WallpaperStore.setFromUri(this, uri) { ok ->
+                log("WALLPAPER: ${if (ok) "已保存自定义壁纸" else "保存失败"}")
+                if (!isDestroyed) snack(if (ok) "壁纸已更新" else "保存失败")
+            }
         }
 
     private val projectionLauncher =
@@ -948,11 +945,10 @@ class MainActivity : AppCompatActivity() {
             )
         }
         findViewById<TextView>(R.id.btnWallpaperReset).setOnClickListener {
-            val ok =
-                WallpaperStore
-                    .resetToDefault(this)
-            log("WALLPAPER: ${if (ok) "已恢复内置默认（CarPlay 官方深色壁纸）" else "恢复失败"}")
-            snack(if (ok) "已恢复默认壁纸" else "恢复失败")
+            WallpaperStore.resetToDefault(this) { ok ->
+                log("WALLPAPER: ${if (ok) "已恢复随车机配色切换的默认壁纸" else "恢复失败"}")
+                if (!isDestroyed) snack(if (ok) "已恢复默认壁纸" else "恢复失败")
+            }
         }
 
         // ---- 折叠卡：高级 / 日志 ----

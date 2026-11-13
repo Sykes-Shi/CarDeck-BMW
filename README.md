@@ -6,7 +6,7 @@ CarDeck-BMW is an experimental Android project based on [CarDeck](https://github
 
 ## 项目状态
 
-当前源码对应 **V35 实验性诊断版**，仍在开发和实车验证中。宝马车型、车机版本和手机系统存在差异，连接、声音、网络、导航和按键功能的表现可能不同。请在停车时完成配置和操作，并保留原车导航等备用方式。完整说明见 [免责声明](DISCLAIMER.md)。
+当前源码对应 **V37 实验性诊断版**，仍在开发和实车验证中。宝马车型、车机版本和手机系统存在差异，连接、声音、网络、导航和按键功能的表现可能不同。请在停车时完成配置和操作，并保留原车导航等备用方式。完整说明见 [免责声明](DISCLAIMER.md)。
 
 各诊断版本的主要变化见 [版本更新记录](CHANGELOG.md)。如需体验或获取安装包，可通过 [GitHub Issues](https://github.com/Sykes-Shi/CarDeck-BMW/issues) 联系项目维护者，并说明希望获取的版本。
 
@@ -45,5 +45,7 @@ gradlew.bat :app:assembleDebug
 ## 致谢与许可
 
 本项目基于 [shaonialife/cardeck](https://github.com/shaonialife/cardeck) 开发，源码基线为上游提交 [`09eebb0`](https://github.com/shaonialife/cardeck/commit/09eebb0f2a51c961c101e8fb49134ca7769b2d94)，感谢原作者及贡献者。上游版权声明为 **Copyright (c) 2026 lizhihua**，项目依照 [MIT License](LICENSE) 开源。
+
+日间默认壁纸由图像生成工具制作。
 
 本项目是独立的非官方实验项目，与宝马、Apple 及相关品牌无关联或认证。CarPlay、AirPlay 等名称及商标归各自权利人所有。

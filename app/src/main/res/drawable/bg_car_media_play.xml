@@ -2,7 +2,7 @@
 <ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#400B2038">
     <item>
         <shape android:shape="oval">
-            <solid android:color="@color/car_accent" />
+            <solid android:color="?attr/deckAccent" />
         </shape>
     </item>
 </ripple>

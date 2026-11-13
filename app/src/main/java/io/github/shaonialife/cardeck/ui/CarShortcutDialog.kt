@@ -142,7 +142,7 @@ internal class CarShortcutDialog(private val activity: AppCompatActivity) {
 
     private fun fallback(key: CarShortcut) = when (key) {
         CarShortcut.OPTION -> "可从车机上的 CarDeck 应用列表打开「车机设置」。"
-        CarShortcut.NAV -> "可从车机上的「搜目的地」打开百度地图。"
+        CarShortcut.NAV -> "也可从车机首页的「目的地」选择「新目的地」。"
         CarShortcut.MAP -> "可从 CarDeck 应用列表打开地图。"
         CarShortcut.MEDIA -> "可从 CarDeck 首页音乐卡打开车载播放器。"
     }

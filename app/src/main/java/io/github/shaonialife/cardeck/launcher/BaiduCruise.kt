@@ -9,8 +9,16 @@ import android.net.Uri
 /** poiSearchPage is the entry used by Baidu Maps' own PoiSearchTileService. */
 internal enum class BaiduMapPage(val uri: String, val label: String) {
     CRUISE("baidumap://map/navi/cruiser?src=andr.shaonialife.cardeck", "百度巡航"),
+    NAVIGATE_HOME("baidumap://map/navi/common?addr=home&coord_type=bd09ll&src=andr.shaonialife.cardeck", "回家"),
+    NAVIGATE_COMPANY("baidumap://map/navi/common?addr=company&coord_type=bd09ll&src=andr.shaonialife.cardeck", "去公司"),
     DESTINATION("baidumap://map/gopage?page=poisearchpage&mode=NORMAL_MODE&src=andr.shaonialife.cardeck", "百度地点搜索"),
     HOME("baidumap://map?src=andr.shaonialife.cardeck", "百度地图首页"),
+}
+
+internal enum class BaiduDestination(val title: String, val page: BaiduMapPage) {
+    HOME("回家", BaiduMapPage.NAVIGATE_HOME),
+    COMPANY("去公司", BaiduMapPage.NAVIGATE_COMPANY),
+    NEW("新目的地", BaiduMapPage.DESTINATION),
 }
 
 internal data class BaiduMapActivity(val component: String, val taskId: Int)

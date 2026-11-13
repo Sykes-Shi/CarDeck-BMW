@@ -11,6 +11,8 @@ import android.widget.TextView
 import io.github.shaonialife.cardeck.R
 import io.github.shaonialife.cardeck.SessionController
 import io.github.shaonialife.cardeck.input.TouchRouter
+import io.github.shaonialife.cardeck.launcher.AppearanceMode
+import io.github.shaonialife.cardeck.launcher.CarAppearance
 import io.github.shaonialife.cardeck.launcher.AppIcons
 import io.github.shaonialife.cardeck.launcher.BaiduCruise
 import io.github.shaonialife.cardeck.launcher.DefaultMapPrefs
@@ -781,7 +783,67 @@ class DisplayPanelFragment : SettingsPanelFragment() {
         savedInstanceState: Bundle?,
     ): View = inflater.inflate(R.layout.fragment_panel_display, container, false)
 
+    private var timePicker: android.app.TimePickerDialog? = null
+
+    private fun bindAppearance(view: View) {
+        val context = requireContext()
+        val modes = view.findViewById<android.widget.RadioGroup>(R.id.carAppearanceMode)
+        val times = view.findViewById<View>(R.id.appearanceTimes)
+        val dayButton = view.findViewById<android.widget.Button>(R.id.dayStart)
+        val nightButton = view.findViewById<android.widget.Button>(R.id.nightStart)
+        fun refresh() {
+            val schedule = CarAppearance.schedule(context)
+            val selected = when (schedule.mode) {
+                AppearanceMode.VEHICLE -> R.id.appearanceVehicle
+                AppearanceMode.AUTO -> R.id.appearanceAuto
+                AppearanceMode.DAY -> R.id.appearanceDay
+                AppearanceMode.NIGHT -> R.id.appearanceNight
+            }
+            if (modes.checkedRadioButtonId != selected) modes.check(selected)
+            times.visibility = if (schedule.mode == AppearanceMode.AUTO) View.VISIBLE else View.GONE
+            fun clock(minute: Int) = java.time.LocalTime.of(minute / 60, minute % 60).toString()
+            dayButton.text = "白天 ${clock(schedule.dayStart)}"
+            nightButton.text = "黑夜 ${clock(schedule.nightStart)}"
+        }
+        refresh()
+        modes.setOnCheckedChangeListener { _, id ->
+            val mode = when (id) {
+                R.id.appearanceDay -> AppearanceMode.DAY
+                R.id.appearanceNight -> AppearanceMode.NIGHT
+                R.id.appearanceVehicle -> AppearanceMode.VEHICLE
+                R.id.appearanceAuto -> AppearanceMode.AUTO
+                else -> return@setOnCheckedChangeListener
+            }
+            CarAppearance.save(context, CarAppearance.schedule(context).copy(mode = mode))
+            refresh()
+        }
+        fun pickTime(day: Boolean) {
+            val current = CarAppearance.schedule(context)
+            val initial = if (day) current.dayStart else current.nightStart
+            timePicker?.dismiss()
+            timePicker = android.app.TimePickerDialog(context, { _, hour, minute ->
+                val chosen = hour * 60 + minute
+                val latest = CarAppearance.schedule(context)
+                if (chosen == (if (day) latest.nightStart else latest.dayStart)) {
+                    hostToast("白天和黑夜的开始时间要错开")
+                } else {
+                    CarAppearance.save(context, if (day) latest.copy(dayStart = chosen) else latest.copy(nightStart = chosen))
+                    refresh()
+                }
+            }, initial / 60, initial % 60, true).also { it.show() }
+        }
+        dayButton.setOnClickListener { pickTime(true) }
+        nightButton.setOnClickListener { pickTime(false) }
+    }
+
+    override fun onDestroyView() {
+        timePicker?.dismiss()
+        timePicker = null
+        super.onDestroyView()
+    }
+
     override fun onViewCreated(view: View) {
+        bindAppearance(view)
         val ctx = requireContext()
         val scaleSeek = view.findViewById<SeekBar>(R.id.displayScaleSeek)
         val scaleValue = view.findViewById<TextView>(R.id.displayScaleValue)

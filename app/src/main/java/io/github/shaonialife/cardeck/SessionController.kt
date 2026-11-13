@@ -260,6 +260,7 @@ object SessionController {
     var currentClient: AirPlayClient? = null
 
     private val userScreenRefreshBusy = AtomicBoolean(false)
+    @Volatile private var reconnectBorrowedScreen: ((AirPlayClient, Long) -> Unit)? = null
 
     fun canRefreshBmwScreen(): Boolean = currentClient?.let {
         !it.cancelled && !connectCancelled && videoSender?.isRunning == true && BmwControlIapCompatibility.matches(it.receiverIdentity())
@@ -274,6 +275,9 @@ object SessionController {
             try {
                 val reason = refreshBmwScreen(client, sender, revision, userRequested = true)
                 if (currentClient === client && !client.cancelled && !connectCancelled) {
+                    if (reason in setOf("awaiting_screen_return", "loan_refresh_failed") &&
+                        offerBmwScreenReconnect(client, sender, revision)
+                    ) return@run
                     val message = when (reason) {
                         "frame_requested" -> "已请求刷新投屏画面"
                         "receiver_owns_screen", "native_activity_active" ->
@@ -288,11 +292,43 @@ object SessionController {
         }
     }
 
+    private fun offerBmwScreenReconnect(client: AirPlayClient, sender: VideoSender, revision: Long): Boolean {
+        val reconnect = reconnectBorrowedScreen ?: return false
+        val show = dialogSink ?: return false
+        fun current() = currentClient === client && !client.cancelled && !connectCancelled &&
+            videoSender === sender && sender.isRunning && client.retryableScreenLoan == revision
+        if (!current()) return false
+        show(DialogSpec(
+            title = "重新连接投屏？",
+            message = "宝马仍在使用主屏。若已退出倒车、通话等原车界面，可保留当前 Wi-Fi 并重新连接投屏。",
+            positive = "重新连接投屏", negative = "继续等待", isCurrent = ::current,
+        )) { answer ->
+            if (answer == true && current()) Bg.run("bmw-user-screen-reconnect") { reconnect(client, revision) }
+        }
+        return true
+    }
+
+    private fun dispatchReturnedMedia(client: AirPlayClient, sender: VideoSender, revision: Long): Boolean {
+        val ctx = appContext ?: return false
+        val generation = VirtualLauncher.sessionGeneration()
+        fun live() = currentClient === client && !client.cancelled && !connectCancelled && videoSender === sender &&
+            sender.isRunning && client.controllerInputRevision == revision && VirtualLauncher.isCurrentSession(generation)
+        if (!live()) return false
+        val token = client.takeReturnedMedia(revision) ?: return false
+        if (!live() || CarShortcutLearning.isCalibrating(generation)) return false
+        val page = CarShortcutLearning.offer(ctx, generation, token, CarShortcut.MEDIA) ?: return false
+        val queued = VirtualLauncher.submitShortcut(page, ::live)
+        appendLog("BMW-KEY: 已归还屏幕，恢复之前的 MEDIA queued=$queued")
+        return queued
+    }
+
     private fun refreshBmwScreen(client: AirPlayClient, sender: VideoSender, revision: Long, userRequested: Boolean): String {
         fun live() = currentClient === client && !client.cancelled && !connectCancelled && videoSender === sender && sender.isRunning
         if (!live()) return "session_changed"
         val result = client.refreshReleasedScreen(revision, userRequested)
-        val refreshed = result.accepted && live() && client.controllerInputRevision == revision && sender.requestKeyFrame()
+        val granted = result.controllerRevision
+        val refreshed = result.accepted && granted != null && live() && client.controllerInputRevision == granted && sender.requestKeyFrame()
+        if (result.accepted && granted != null && live()) dispatchReturnedMedia(client, sender, granted)
         appendLog("BMW-SCREEN: refresh user=$userRequested revision=$revision reason=${result.reason} keyFrame=$refreshed")
         return if (refreshed) "frame_requested" else result.reason
     }
@@ -612,6 +648,7 @@ object SessionController {
 
     /** 调用方持有 wifiBindLock；不得在旧任务收尾时清理另一代已发布的资源。 */
     private fun retireSessionResources() {
+        reconnectBorrowedScreen = null
         // 先使后台音频启动失效，再清理发送器，避免旧任务在清理后发布新发送器。
         currentClient?.cancelled = true
         CarShortcutLearning.onProjectionEnded()
@@ -2362,6 +2399,15 @@ object SessionController {
                                     }
                                 }
                                 when (command["type"]) {
+                                    "setNightMode" -> {
+                                        if (currentClient === uiRecoveryClient && !uiRecoveryClient.cancelled &&
+                                            uiRecoveryClient.acceptNightMode(command["params"] as? Map<*, *>)
+                                        ) {
+                                            val action = io.github.shaonialife.cardeck.launcher.CarAppearance.VEHICLE_MODE_CHANGED
+                                            context.sendBroadcast(android.content.Intent(action).setPackage(context.packageName))
+                                            appendLog("车机配色：收到夜间模式更新 night=${uiRecoveryClient.receiverNightMode()}")
+                                        }
+                                    }
                                     "requestSiri" -> {
                                         val action = (command["params"] as? Map<*, *>)?.get("siriAction")
                                         val press = voiceKey.onAction(action, android.os.SystemClock.elapsedRealtime())
@@ -2386,6 +2432,13 @@ object SessionController {
                                         val target = if (liveSession && isBmw) BmwShortcutTarget.from(command) else null
                                         val sender = videoSender
                                         val inputRevision = uiRecoveryClient.controllerInputRevision
+                                        val requestParams = command["params"] as? Map<*, *>
+                                        val bareReturn = requestParams?.size == 1 && requestParams["url"] == ""
+                                        if (isBmw && liveSession && !bareReturn) {
+                                            val media = target?.takeIf { inputRevision == null && it.defaultPage == CarShortcut.MEDIA &&
+                                                !CarShortcutLearning.isCalibrating(generation) }
+                                            uiRecoveryClient.rememberBorrowedMedia(media?.token)
+                                        }
                                         val receivedScreen = shortcutScreenChanges.get()
                                         fun ownsShortcut(revision: Long): Boolean =
                                             receivedScreen == shortcutScreenChanges.get() && currentClient === uiRecoveryClient &&
@@ -2420,14 +2473,16 @@ object SessionController {
                                                         uiRecoveryClient.cancelled || connectCancelled
                                                     ) return@run
                                                     val expectedVideoSender = videoSender
-                                                    val recovery = uiRecoveryClient.restoreRequestedUi(modeRevision)
+                                                    val recovery = uiRecoveryClient.restoreRequestedUi(modeRevision, refreshLoan = bareReturn || target != null)
                                                     val stillLive = currentClient === uiRecoveryClient &&
                                                         !uiRecoveryClient.cancelled && !connectCancelled
                                                     val keyFrameRequested = stillLive && videoSender === expectedVideoSender &&
                                                         recovery.accepted &&
                                                         expectedVideoSender?.requestKeyFrame() == true
+                                                    val mediaQueued = recovery.accepted && stillLive && expectedVideoSender != null && recovery.controllerRevision != null &&
+                                                        dispatchReturnedMedia(uiRecoveryClient, expectedVideoSender, recovery.controllerRevision)
                                                     if (recovery.accepted && inputRevision == null && recovery.reason == "bmw_take_then_request_ui" &&
-                                                        sequence == shortcutSequence.get()
+                                                        !mediaQueued && sequence == shortcutSequence.get()
                                                     ) {
                                                         val restoredRevision = recovery.controllerRevision
                                                         dispatch(resolveTarget(restoredRevision), restoredRevision)
@@ -2594,6 +2649,7 @@ object SessionController {
                                             if (revision != null && stillLive && expectedVideoSender != null && videoSender === expectedVideoSender) {
                                                 val forced = update.accepted && uiRecoveryClient.controllerInputRevision == revision &&
                                                     expectedVideoSender.requestKeyFrame()
+                                                if (update.accepted) dispatchReturnedMedia(uiRecoveryClient, expectedVideoSender, revision)
                                                 appendLog("BMW-SCREEN: 主屏已归还 revision=$revision accepted=${update.accepted} keyFrame=$forced")
                                                 // The head unit can still be switching from native UI when the first IDR arrives.
                                                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -2759,6 +2815,22 @@ object SessionController {
                                     synchronized(wifiBindLock) {
                                         requireAttempt()
                                         videoSender = sessionVideoSender
+                                        if (isBmw && receiverAtStart != null) {
+                                            reconnectBorrowedScreen = reconnect@{ old, revision ->
+                                                synchronized(wifiBindLock) {
+                                                    if (old !== uiRecoveryClient || currentClient !== old || connectCancelled ||
+                                                        videoSender !== sessionVideoSender || !wifiJoins.isCurrent(wifiEpoch) ||
+                                                        selectedCtrlReceiver() != receiverAtStart || ctrlAdvertiser == null ||
+                                                        !sessionAttempts.matches(attempt, wifiConnector?.currentNetwork) ||
+                                                        !old.cancelForScreenReconnect(revision)
+                                                    ) return@reconnect
+                                                    appendLog("BMW-SCREEN: 用户确认重新连接投屏，保留车机 Wi-Fi，等待新的连接邀请")
+                                                    io.github.shaonialife.cardeck.net.ProjectionAppMobileData.stop(context, VirtualLauncher.sessionGeneration())
+                                                    endBmwStream(attempt, wifiEpoch, endpoint, receiverAtStart)
+                                                    phaseHint = "等待宝马重新邀请，可在 iDrive 点选这部手机连接"
+                                                }
+                                            }
+                                        }
                                     }
                                     // 先连端口（车机看门狗），编码器等 RECORD 后再启动
                                     sessionVideoSender?.openDataPort()

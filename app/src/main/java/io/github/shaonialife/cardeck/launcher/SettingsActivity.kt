@@ -136,13 +136,35 @@ class SettingsActivity :
         showMenu(index)
     }
 
+    override fun onCarAppearanceChanged(day: Boolean) {
+        val menu = findViewById<LinearLayout>(R.id.settingsMenu) ?: return
+        menu.setBackgroundColor(carPalette.surface)
+        menu.findViewById<TextView>(R.id.btnBack).apply {
+            setTextColor(carPalette.accent)
+            compoundDrawableTintList = android.content.res.ColorStateList.valueOf(carPalette.accent)
+        }
+        for (i in 0 until menu.childCount) {
+            val child = menu.getChildAt(i)
+            if (child is TextView && child.id != R.id.btnBack) child.setTextColor(carPalette.secondary)
+        }
+        menus.forEach { row ->
+            carPalette.background(row, R.drawable.bg_menu_item)
+            for (i in 0 until row.childCount) {
+                val icon = row.getChildAt(i) as? android.widget.ImageView ?: continue
+                carPalette.background(icon, R.drawable.bg_menu_chip)
+                icon.imageTintList = android.content.res.ColorStateList.valueOf(carPalette.accent)
+            }
+        }
+        applyMenuStyle(currentMenu)
+    }
+
     private fun applyMenuStyle(index: Int) {
         menus.forEachIndexed { i, menu ->
             menu.isActivated = i == index
             for (c in 0 until menu.childCount) {
                 val child = menu.getChildAt(c)
                 if (child is TextView) {
-                    child.setTextColor(getColor(if (menu.isActivated) R.color.car_text else R.color.car_text_muted))
+                    child.setTextColor(if (menu.isActivated) carPalette.text else carPalette.secondary)
                     child.paint.isFakeBoldText = i == index
                 }
             }

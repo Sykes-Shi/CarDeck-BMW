@@ -257,6 +257,9 @@ class DualDisplayComposer(
             false
         }
 
+    fun dashboardMapStatus(): String =
+        "layout=$tileLayout frames=${mapInput?.frameCount ?: 0} slide=$tileSlideFraction"
+
     /** 切换地图 tile 布局。 */
     fun setTileLayout(layout: TileLayout) {
         tileLayout = layout

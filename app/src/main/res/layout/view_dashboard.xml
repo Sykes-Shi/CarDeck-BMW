@@ -40,7 +40,7 @@
         </ScrollView>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="12dp" android:layout_marginTop="6dp" android:layout_marginBottom="12dp" android:gravity="center_vertical">
             <TextView android:id="@+id/dashOpenPlayer" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:gravity="center" android:text="车载播放" android:textSize="15sp" android:fontFamily="sans-serif-medium" android:textColor="@color/car_text" android:background="@drawable/bg_car_media_button" />
-            <TextView android:id="@+id/dashBaiduDestination" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginStart="6dp" android:gravity="center" android:text="搜目的地" android:textSize="15sp" android:fontFamily="sans-serif-medium" android:textColor="@color/car_text" android:clickable="true" android:focusable="true" android:background="@drawable/bg_car_media_button" android:visibility="gone" />
+            <TextView android:id="@+id/dashBaiduDestination" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginStart="6dp" android:gravity="center" android:text="目的地" android:textSize="15sp" android:fontFamily="sans-serif-medium" android:textColor="@color/car_text" android:clickable="true" android:focusable="true" android:background="@drawable/bg_car_media_button" android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
     </FrameLayout>

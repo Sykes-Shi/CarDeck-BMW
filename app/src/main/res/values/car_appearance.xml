@@ -1,0 +1,46 @@
+<resources>
+    <item type="id" name="carMutedTextRole" />
+    <attr name="deckSurface" format="color" />
+    <attr name="deckControl" format="color" />
+    <attr name="deckOutline" format="color" />
+    <attr name="deckText" format="color" />
+    <attr name="deckSecondary" format="color" />
+    <attr name="deckAccent" format="color" />
+    <attr name="deckOnAccent" format="color" />
+    <attr name="deckRipple" format="color" />
+    <attr name="deckRaised" format="color" />
+    <attr name="deckCruise" format="color" />
+    <attr name="deckCruiseBorder" format="color" />
+    <attr name="deckLabel" format="color" />
+    <style name="CarPaletteDay" parent="">
+        <item name="deckSurface">#EAF0F5</item>
+        <item name="deckControl">#D5E1EB</item>
+        <item name="deckOutline">#8193A3</item>
+        <item name="deckText">#14293B</item>
+        <item name="deckSecondary">#394F61</item>
+        <item name="deckAccent">#175879</item>
+        <item name="deckOnAccent">#FFFFFF</item>
+        <item name="deckRipple">#331B587E</item>
+        <item name="deckRaised">#F4F8FA</item>
+        <item name="deckCruise">#D7E9F0</item>
+        <item name="deckCruiseBorder">#708D9E</item>
+        <item name="deckLabel">#F0EFF5F9</item>
+    </style>
+    <style name="AppearanceModeChoice" parent="Widget.AppCompat.CompoundButton.RadioButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">42dp</item>
+        <item name="android:textColor">#FFF5F5F7</item>
+        <item name="android:buttonTint">@color/car_accent</item>
+    </style>
+    <style name="AppearanceTimeButton" parent="Widget.AppCompat.Button">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">4dp</item>
+        <item name="android:textColor">@color/car_text</item>
+        <item name="android:background">@drawable/bg_car_media_button</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>

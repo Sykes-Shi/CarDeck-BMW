@@ -2,6 +2,6 @@
 <!-- 设置页菜单项左侧图标片：石墨色圆角 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@color/car_control" />
+    <solid android:color="?attr/deckControl" />
     <corners android:radius="7dp" />
 </shape>

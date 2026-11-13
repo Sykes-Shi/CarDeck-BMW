@@ -15,11 +15,11 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import io.github.shaonialife.cardeck.R
 import io.github.shaonialife.cardeck.input.CarControllerInput
 import io.github.shaonialife.cardeck.input.CarControllerAction
 import io.github.shaonialife.cardeck.input.DockControllerNavigation
+import io.github.shaonialife.cardeck.ui.WallpaperSelection
 import io.github.shaonialife.cardeck.ui.WallpaperStore
 import io.github.shaonialife.cardeck.util.Bg
 
@@ -31,7 +31,7 @@ import io.github.shaonialife.cardeck.util.Bg
  *  - 竖屏车机：dock 是底部横条 → activity_dock_bar.xml（⌂ | 应用横排 | 时间/电量）
  * 形态由 dock 虚拟屏自身宽高决定（竖条 height>width；横条 width>height），与车机方向自动对齐。
  */
-class DockActivity : AppCompatActivity() {
+class DockActivity : CarAppearanceActivity() {
     companion object {
         // All access is on the main looper. An old activity cannot receive a new display's keys.
         private var showing = java.lang.ref.WeakReference<DockActivity>(null)
@@ -195,10 +195,11 @@ class DockActivity : AppCompatActivity() {
 
     /** 壁纸背景（全流画布切片，与桌面同源同路径——交界处逐像素连续）。 */
     private var wallpaperView: ImageView? = null
-    private var wallpaperShownVersion = -1L
+    private var wallpaperRequested: WallpaperSelection? = null
 
-    /** 壁纸变更监听（WallpaperStore 主线程回调；解码在本类自行切后台线程）。 */
-    private val wallpaperListener = { _: Long -> refreshWallpaperIfChanged() }
+    private val wallpaperListener: (Long) -> Unit = {
+        runOnUiThread { refreshWallpaperIfChanged() }
+    }
 
     /** dock 外观偏好监听（设置页拖动滑条即时生效）。 */
     private val dockPrefsListener: () -> Unit = { runOnUiThread { applyDockPrefs() } }
@@ -274,6 +275,16 @@ class DockActivity : AppCompatActivity() {
         refresh()
     }
 
+    override fun onCarAppearanceChanged(day: Boolean) {
+        refreshWallpaperIfChanged()
+        applyDockPrefs()
+        clockView?.setTextColor(carPalette.text)
+        batteryText?.setTextColor(carPalette.secondary)
+        val tint = android.content.res.ColorStateList.valueOf(carPalette.text)
+        home.imageTintList = tint
+        mapButton.imageTintList = tint
+    }
+
     override fun onStart() {
         super.onStart()
         if (ownsDock()) showing = java.lang.ref.WeakReference(this)
@@ -322,7 +333,8 @@ class DockActivity : AppCompatActivity() {
         val alpha = (DockPrefs.scrimOpacity(this) * 255 / 100).coerceIn(0, 255)
         scrim.background =
             android.graphics.drawable.ColorDrawable(
-                android.graphics.Color.argb(alpha, 0, 0, 0),
+                if (carPalette.day) androidx.core.graphics.ColorUtils.setAlphaComponent(carPalette.surface, alpha.coerceAtLeast(228))
+                else android.graphics.Color.argb(alpha, 0, 0, 0),
             )
         val wallpaper = wallpaperView ?: return
         val percent = DockPrefs.blur(this)
@@ -343,17 +355,21 @@ class DockActivity : AppCompatActivity() {
     /** 壁纸版本变化时后台重解码并换图（监听器模式下与桌面同步更新）。 */
     private fun refreshWallpaperIfChanged() {
         val view = wallpaperView ?: return
-        val current = WallpaperStore.version
-        if (current == wallpaperShownVersion) return
-        wallpaperShownVersion = current
+        val selection = WallpaperStore.selection(carPalette.day)
+        if (selection == wallpaperRequested) return
         val params = view.layoutParams as? FrameLayout.LayoutParams ?: return
+        val width = params.width
+        val height = params.height
+        if (width <= 0 || height <= 0) return
+        wallpaperRequested = selection
         Bg.run("wallpaper-dock") {
             val bitmap =
                 runCatching {
                     WallpaperStore.aspectFillCanvas(
                         this@DockActivity,
-                        params.width,
-                        params.height,
+                        width,
+                        height,
+                        selection,
                     )
                 }.getOrNull()
             if (bitmap != null) {
@@ -361,9 +377,13 @@ class DockActivity : AppCompatActivity() {
                     "WALLPAPER-DOCK: bitmap=${bitmap.width}x${bitmap.height} " +
                         "view=${params.width}x${params.height} top=${params.topMargin}",
                 )
-                runOnUiThread { view.setImageBitmap(bitmap) }
+                runOnUiThread {
+                    if (!isDestroyed && selection == WallpaperStore.selection(carPalette.day)) view.setImageBitmap(bitmap)
+                }
             } else {
-                VirtualLauncher.logSink?.invoke("WALLPAPER-DOCK: 解码失败")
+                runOnUiThread {
+                    if (selection == wallpaperRequested) wallpaperRequested = null
+                }
             }
         }
     }

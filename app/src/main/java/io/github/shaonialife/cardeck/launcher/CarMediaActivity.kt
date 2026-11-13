@@ -118,6 +118,12 @@ class CarMediaActivity : CarControllerActivity() {
         return valid
     }
 
+    override fun onCarAppearanceChanged(day: Boolean) {
+        if (!pageReady) return
+        carPalette.media(findViewById(R.id.carMediaRoot))
+        if (started) render()
+    }
+
     override fun onStart() {
         super.onStart()
         if (!pageReady || !validSession()) return
@@ -181,7 +187,7 @@ class CarMediaActivity : CarControllerActivity() {
             cover.setImageBitmap(artwork)
         }
         cover.visibility = if (artwork == null) View.INVISIBLE else View.VISIBLE
-        backdrop?.bind(artwork, now?.backdropColor ?: ArtworkTone.DEFAULT)
+        backdrop?.bind(artwork, now?.backdropColor ?: ArtworkTone.DEFAULT, carPalette)
         val lyricText = if (MediaSessionsState.accessGranted) now?.lyricTextAt(elapsed) else null
         val lyricStatus = if (MediaSessionsState.accessGranted && now != null && now.lyrics == null) {
             io.github.shaonialife.cardeck.media.OnlineLyrics.statusFor(this, now.pkg, now.title, now.artist, now.durationMs)
@@ -262,11 +268,9 @@ class CarMediaActivity : CarControllerActivity() {
     }
 
     private fun returnHome() {
-        val ownerDisplay = display?.displayId ?: -1
-        val ownerSession = launchSession
-        if (validSession()) Bg.run("car-media-home") {
-            if (VirtualLauncher.ownsCarMedia(ownerDisplay, ownerSession)) VirtualLauncher.showDashboard()
-        }
+        // Commit the Home presentation before finish() can resume the grid's old page.
+        // The activity/display queries and grid launch are already asynchronous.
+        if (validSession()) VirtualLauncher.showDashboard()
         finish()
     }
 

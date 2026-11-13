@@ -27,6 +27,7 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
     @Volatile private var uiRevision = 0L
     private var screenReturnPending = false
     private var screenNativeReturnArmed = false
+    private var deferredMedia: String? = null
 
     data class UiRestoreDecision(val allowed: Boolean, val reason: String)
 
@@ -47,12 +48,14 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
             }
             if (nativePhoneCall && callEpoch % 2 == 0L) callEpoch++
         }
+        if (nativePhoneCall || nativeSpeech > 0) deferredMedia = null
         val rows = params["resources"] as? List<*> ?: return ignored("no_resource_list")
         // 超出处理上限时可能遗漏另一条借用，不能因截断而声称资源已空闲。
         if (rows.size > MAX_RESOURCE_ROWS) {
             uiRevision++
             screen.unknown = true
             audio.unknown = true
+            deferredMedia = null
             return ignored("resource_list_overflow_hold")
         }
         var borrowed = 0
@@ -68,6 +71,7 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
             integer(it["resourceID"]) == 1L
         }
         val hasScreenBorrow = screenRows.any { integer(it["transferType"]) == 3L }
+        if (hasScreenBorrow) deferredMedia = null
         if ((screen.borrowed || screen.permanentOwner == ACCESSORY) && screenRows.size > 1 &&
             screenRows.any { integer(it["transferType"]) == 1L }
         ) {
@@ -145,6 +149,7 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
                 }
             }
         }
+        if (screen.unknown || audio.borrowed) deferredMedia = null
         return "modeBorrowGuard=processed borrowed=$borrowed duplicate=$duplicate returned=$returned " +
             "unmatched=$unmatched held=$held retained_legacy=$legacy unsupported=$unsupported " +
             "screenTake=$screenTake ${summary()}"
@@ -177,6 +182,22 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
 
     fun captureUiRestoreRevision(): Long = uiRevision
 
+    // A lone, identified screen loan can be restated to the car. It remains the
+    // owner even if the driver presses MEDIA or the phone's return button.
+    fun canRetryScreenLoan(revision: Long): Boolean =
+        eligibleReceiver && revision == uiRevision && !nativePhoneCall && nativeSpeech <= 0L &&
+            !audio.borrowed && !screen.unknown && screen.ids.size == 1 && screen.permanentOwner == CONTROLLER
+
+    fun rememberMedia(token: String?) {
+        deferredMedia = token?.takeIf { canRetryScreenLoan(uiRevision) || screenNativeReturnArmed && !screen.borrowed &&
+            !nativePhoneCall && nativeSpeech <= 0L && !audio.borrowed }
+    }
+
+    fun takeDeferredMedia(revision: Long): String? {
+        if (screenRefreshBlock(revision) != null) return null
+        return deferredMedia.also { deferredMedia = null }
+    }
+
     /** Called after every changeModes, including appStates-only call-end notifications. */
     fun consumeScreenReturn(wasWithController: Boolean): Long? {
         if (!isScreenAvailableToController()) screenReturnPending = false
@@ -198,10 +219,13 @@ internal class BmwModeBorrowGuard(receiverIdentity: String) {
     fun controllerInputRevision(): Long? = if (eligibleReceiver && isScreenAvailableToController()) uiRevision else null
 
     /** 仅在车机 requestUI 到达后调用；排队期间有新主屏事件时不得使用旧请求恢复。 */
-    fun restoreRequestedUi(expectedRevision: Long): UiRestoreDecision {
+    fun restoreRequestedUi(expectedRevision: Long, refreshLoan: Boolean = false): UiRestoreDecision {
         if (expectedRevision != uiRevision) return UiRestoreDecision(false, "mode_state_changed")
-        if (screen.borrowed) return UiRestoreDecision(false, "receiver_screen_borrowed")
+        if (screen.borrowed) {
+            return UiRestoreDecision(false, if (refreshLoan && canRetryScreenLoan(expectedRevision)) "awaiting_screen_return" else "receiver_screen_borrowed")
+        }
         if (screen.permanentOwner == ACCESSORY) {
+            if (nativePhoneCall || nativeSpeech > 0L) return UiRestoreDecision(false, "native_activity_active")
             if (!screenNativeReturnArmed) return UiRestoreDecision(false, "native_screen_restore_not_supported")
             // 只有上述本车已观测参数的 Take 能进入此状态，takeConstraint=500 允许用户请求回切。
             screen.permanentOwner = CONTROLLER

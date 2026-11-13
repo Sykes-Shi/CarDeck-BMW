@@ -124,6 +124,62 @@ class BmwModeBorrowGuardTest {
     private fun requestUi(guard: BmwModeBorrowGuard) =
         guard.restoreRequestedUi(guard.captureUiRestoreRevision())
 
+    @Test fun mediaThenCarplayThenPhoneReturnWaitForTheActualGrant() {
+        val g = guard()
+        g.apply(command(row(id = "A") + mapOf("transferPriority" to 500L, "unborrowConstraint" to 1000L)))
+        val loan = g.captureUiRestoreRevision()
+        g.rememberMedia("now-playing-token")
+        repeat(3) { // MEDIA, BMW CarPlay tile, phone return (independent of a new EVENT)
+            assertEquals(BmwModeBorrowGuard.UiRestoreDecision(false, "awaiting_screen_return"),
+                g.restoreRequestedUi(loan, refreshLoan = true))
+            assertTrue(g.canRetryScreenLoan(loan))
+            assertEquals(null, g.takeDeferredMedia(loan))
+            assertEquals(2L, owner(g, 1))
+        }
+        val granted = requireNotNull(applyAndCheckScreen(g, command(row(transfer = 4L, id = "A"))))
+        assertFalse(g.canRetryScreenLoan(loan))
+        assertEquals(null, g.takeDeferredMedia(loan))
+        assertEquals("now-playing-token", g.takeDeferredMedia(granted))
+        assertEquals(null, g.takeDeferredMedia(granted))
+    }
+
+    @Test fun aNewBorrowCallOrReplacementSessionDoesNotOpenStaleMusic() {
+        val g = guard()
+        g.apply(command(row(id = "a")))
+        g.rememberMedia("old")
+        val previous = g.captureUiRestoreRevision()
+        g.apply(command(row(id = "b")))
+        assertFalse(g.canRetryScreenLoan(previous))
+        assertFalse(g.canRetryScreenLoan(g.captureUiRestoreRevision()))
+        g.apply(command(row(transfer = 4L, id = "b")))
+        g.apply(phoneState(true, row(resource = 2L, id = "call")))
+        val revision = g.captureUiRestoreRevision()
+        assertFalse(g.canRetryScreenLoan(revision))
+        assertFalse(g.restoreRequestedUi(revision, true).allowed)
+        g.apply(phoneState(false, row(resource = 2L, transfer = 4L, id = "call"), row(transfer = 4L, id = "a")))
+        assertEquals(null, g.takeDeferredMedia(g.captureUiRestoreRevision()))
+        g.apply(command(row(id = "next")))
+        g.rememberMedia("previous-client")
+        val replacement = guard()
+        assertFalse(replacement.canRetryScreenLoan(replacement.captureUiRestoreRevision()))
+        assertEquals(null, replacement.takeDeferredMedia(replacement.captureUiRestoreRevision()))
+    }
+
+    @Test fun supportedNativeTakeCanReturnOnPhoneTapWithoutAnotherHeadUnitRequest() {
+        val g = guard()
+        g.apply(command(row()))
+        g.rememberMedia("music")
+        g.apply(command(observedTake()))
+        val taken = g.captureUiRestoreRevision()
+        assertFalse(g.canRetryScreenLoan(taken))
+        assertEquals("bmw_take_then_request_ui", g.restoreRequestedUi(taken, refreshLoan = true).reason)
+        assertEquals("music", g.takeDeferredMedia(g.captureUiRestoreRevision()))
+        val busy = nativeAfterBorrow()
+        busy.apply(phoneState(true))
+        assertEquals("native_activity_active", busy.restoreRequestedUi(busy.captureUiRestoreRevision(), true).reason)
+        assertEquals(2L, owner(busy, 1))
+    }
+
     private fun applyAndCheckScreen(g: BmwModeBorrowGuard, command: Map<String, Any?>): Long? {
         val before = g.isScreenAvailableToController()
         g.apply(command)

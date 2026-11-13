@@ -79,7 +79,7 @@ internal class CarControllerFocus {
 }
 
 /** The phone settings Activity has its own input behavior. Only car-hosted pages use this base. */
-abstract class CarControllerActivity : androidx.appcompat.app.AppCompatActivity() {
+abstract class CarControllerActivity : CarAppearanceActivity() {
     private val controllerFocus = CarControllerFocus()
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

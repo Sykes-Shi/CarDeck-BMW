@@ -6,31 +6,29 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
 import java.io.File
+import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
-/**
- * 车机壁纸存储：当前壁纸 = 用户选择的图片（files/wallpaper.jpg）或内置默认
- * （assets/wallpaper_default.jpg，Apple CarPlay 官方深色壁纸压缩版）。
- *
- * 合成器以位图上传 GL 纹理；更换壁纸后经 [version] 递增通知重载。
- */
-object WallpaperStore {
-    /** 内置默认壁纸（assets 内文件名）。 */
-    const val DEFAULT_ASSET = "wallpaper_default.jpg"
+/** Immutable identity carried from a load request through the cache to the displayed image. */
+internal data class WallpaperSelection(val revision: Long, val day: Boolean) {
+    fun <T> load(custom: () -> T?, bundled: (String) -> T?): T? =
+        custom() ?: bundled(if (day) "wallpaper_day.jpg" else "wallpaper_default.jpg")
+}
 
+internal object WallpaperStore {
     private const val USER_FILE = "wallpaper.jpg"
 
-    private val versionCounter =
-        java.util.concurrent.atomic
-            .AtomicLong(0)
+    private val versionCounter = AtomicLong()
 
     /** 当前壁纸版本（更换后递增；接收方据此判断是否需要重载）。 */
-    val version: Long get() = versionCounter.get()
+    fun selection(day: Boolean) = WallpaperSelection(versionCounter.get(), day)
 
     // ---- 变更通知（监听器模式；接收方注册后应立即读一次当前状态兜底） ----
 
-    private val listeners = java.util.concurrent.CopyOnWriteArraySet<(Long) -> Unit>()
+    private val listeners = CopyOnWriteArraySet<(Long) -> Unit>()
 
-    /** 注册壁纸变更监听（在主线程回调；参数为新版本号）。 */
+    /** 注册自定义壁纸变更监听（写入线程通知，视图在主线程处理）。 */
     fun addListener(listener: (Long) -> Unit) {
         listeners.add(listener)
     }
@@ -39,25 +37,13 @@ object WallpaperStore {
         listeners.remove(listener)
     }
 
-    fun markChanged() {
+    private fun markChanged() {
         val version = versionCounter.incrementAndGet()
         listeners.forEach { runCatching { it(version) } }
     }
 
     /** 用户壁纸文件（null = 使用内置默认）。 */
-    fun userWallpaperFile(context: Context): File? = File(context.filesDir, USER_FILE).takeIf { it.exists() && it.length() > 0 }
-
-    /**
-     * 解码当前壁纸（GL 线程调用；失败回退内置默认，再失败回退 null 由合成器画纯色）。
-     * 按 [maxSize] 限制边长（显存友好；aspectFill 由合成器按比例缩放绘制）。
-     */
-    fun decode(
-        context: Context,
-        maxSize: Int = 2560,
-    ): Bitmap? {
-        decodeUser(context, maxSize)?.let { return it }
-        return decodeDefault(context, maxSize)
-    }
+    private fun userWallpaperFile(context: Context): File? = File(context.filesDir, USER_FILE).takeIf { it.exists() && it.length() > 0 }
 
     private fun decodeUser(
         context: Context,
@@ -79,16 +65,17 @@ object WallpaperStore {
 
     private fun decodeDefault(
         context: Context,
+        asset: String,
         maxSize: Int,
     ): Bitmap? =
         runCatching {
-            context.assets.open(DEFAULT_ASSET).use { input ->
+            context.assets.open(asset).use { input ->
                 val options =
                     BitmapFactory.Options().apply {
                         inJustDecodeBounds = true
                         BitmapFactory.decodeStream(input, null, this)
                     }
-                context.assets.open(DEFAULT_ASSET).use { stream ->
+                context.assets.open(asset).use { stream ->
                     options.inJustDecodeBounds = false
                     options.inSampleSize = sampleSize(options.outWidth, options.outHeight, maxSize)
                     BitmapFactory.decodeStream(stream, null, options)
@@ -96,28 +83,35 @@ object WallpaperStore {
             }
         }.getOrNull()
 
-    /** 复制用户选择的图片到内部存储并标记变更（重复选择同一图也覆盖，幂等）。 */
-    fun setFromUri(
-        context: Context,
-        uri: Uri,
-    ): Boolean =
-        runCatching {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                File(context.filesDir, USER_FILE).outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            } ?: return false
-            markChanged()
-            true
-        }.getOrDefault(false)
+    // Ordered writes keep repeated picks and reset in the order the user requested them.
+    private val writer = Executors.newSingleThreadExecutor { Thread(it, "wallpaper-writer") }
 
-    /** 恢复内置默认壁纸。 */
-    fun resetToDefault(context: Context): Boolean =
-        runCatching {
-            File(context.filesDir, USER_FILE).delete()
-            markChanged()
-            true
-        }.getOrDefault(false)
+    fun setFromUri(context: Context, uri: Uri, done: (Boolean) -> Unit) = write(context, done) { appContext ->
+        val file = File(appContext.filesDir, USER_FILE)
+        val staged = File.createTempFile("wallpaper-", ".tmp", appContext.filesDir)
+        try {
+            val count = appContext.contentResolver.openInputStream(uri)?.use { input ->
+                staged.outputStream().use { output -> input.copyTo(output) }
+            } ?: 0L
+            count > 0L && staged.renameTo(file)
+        } finally {
+            staged.delete()
+        }
+    }
+
+    fun resetToDefault(context: Context, done: (Boolean) -> Unit) = write(context, done) { appContext ->
+        val file = File(appContext.filesDir, USER_FILE)
+        !file.exists() || file.delete()
+    }
+
+    private fun write(context: Context, done: (Boolean) -> Unit, change: (Context) -> Boolean) {
+        val appContext = context.applicationContext
+        writer.execute {
+            val changed = runCatching { change(appContext) }.getOrDefault(false)
+            if (changed) markChanged()
+            android.os.Handler(android.os.Looper.getMainLooper()).post { done(changed) }
+        }
+    }
 
     private fun sampleSize(
         width: Int,
@@ -131,20 +125,8 @@ object WallpaperStore {
 
     // ---- 桌面切片：全流画布的 aspectFill 位图（GridActivity/DockActivity 共用） ----
 
-    /** 双尺寸缓存（桌面 = 超采样屏尺寸、dock = 流尺寸各一份）。 */
-    private val canvasCache = HashMap<String, Bitmap>()
-    private var canvasCacheVersion = -1L
-
-    /** 画布位图就绪监听（首次构建/版本更换重建后回调；参数 = 画布版本号）。 */
-    private val canvasReadyListeners = java.util.concurrent.CopyOnWriteArrayList<(Long) -> Unit>()
-
-    fun addCanvasReadyListener(listener: (Long) -> Unit) {
-        canvasReadyListeners.add(listener)
-    }
-
-    fun removeCanvasReadyListener(listener: (Long) -> Unit) {
-        canvasReadyListeners.remove(listener)
-    }
+    private data class CanvasKey(val selection: WallpaperSelection, val width: Int, val height: Int)
+    private val canvasCache = android.util.LruCache<CanvasKey, Bitmap>(2)
 
     /**
      * 按「整个视频流画布」做 aspectFill 的壁纸位图（调用方把切片偏移到自己的窗口位置）。
@@ -155,14 +137,16 @@ object WallpaperStore {
         context: Context,
         canvasWidth: Int,
         canvasHeight: Int,
+        selection: WallpaperSelection,
     ): Bitmap? {
-        if (canvasWidth <= 0 || canvasHeight <= 0) return null
-        val key = "${canvasWidth}x$canvasHeight"
-        canvasCache[key]?.let { cached ->
-            if (canvasCacheVersion == version) return cached
-        }
-        if (canvasCacheVersion != version) canvasCache.clear()
-        val source = decode(context, maxOf(canvasWidth, canvasHeight) * 2) ?: return null
+        if (canvasWidth <= 0 || canvasHeight <= 0 || selection.revision != versionCounter.get()) return null
+        val key = CanvasKey(selection, canvasWidth, canvasHeight)
+        canvasCache.get(key)?.let { return it }
+        val maxSize = maxOf(canvasWidth, canvasHeight) * 2
+        val source = selection.load(
+            custom = { decodeUser(context, maxSize) },
+            bundled = { decodeDefault(context, it, maxSize) },
+        ) ?: return null
         val bitmap = Bitmap.createBitmap(canvasWidth, canvasHeight, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
         val scale =
@@ -183,9 +167,9 @@ object WallpaperStore {
                 ((canvasHeight - drawHeight) / 2f).toInt() + drawHeight.toInt(),
             )
         canvas.drawBitmap(source, null, dest, paint)
-        canvasCacheVersion = version
-        canvasCache[key] = bitmap
-        canvasReadyListeners.forEach { runCatching { it(version) } }
+        source.recycle()
+        if (selection.revision != versionCounter.get()) return null
+        canvasCache.put(key, bitmap)
         return bitmap
     }
 }

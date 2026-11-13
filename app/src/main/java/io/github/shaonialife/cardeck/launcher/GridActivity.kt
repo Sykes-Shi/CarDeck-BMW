@@ -1,5 +1,7 @@
 package io.github.shaonialife.cardeck.launcher
 
+import androidx.core.view.descendants
+
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -10,7 +12,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import io.github.shaonialife.cardeck.R
@@ -20,6 +21,7 @@ import io.github.shaonialife.cardeck.media.TargetedMediaControls
 import io.github.shaonialife.cardeck.render.CARD_MARGIN_PX
 import io.github.shaonialife.cardeck.render.DASH_GAP_PX
 import io.github.shaonialife.cardeck.render.DASH_HANDLE_TOUCH_PX
+import io.github.shaonialife.cardeck.ui.WallpaperSelection
 import io.github.shaonialife.cardeck.ui.WallpaperStore
 import io.github.shaonialife.cardeck.util.Bg
 
@@ -32,7 +34,7 @@ import io.github.shaonialife.cardeck.util.Bg
  * 默认只显示地图类应用（DesktopApps 默认选择），第一格固定「车机设置」入口；
  * 用户可在设置页勾选要显示的应用，返回桌面（onResume）即时刷新。
  */
-class GridActivity : AppCompatActivity() {
+class GridActivity : CarAppearanceActivity() {
     private val controllerFocus = CarControllerFocus()
     private var cursorRevision = 0L
 
@@ -62,6 +64,7 @@ class GridActivity : AppCompatActivity() {
                             val revision = cursorRevision
                             controllerFocus.clear()
                             pageView.setCurrentItem(next, false)
+                            if ((next == 0) != VirtualLauncher.dashboardMode) VirtualLauncher.syncDashboard(next == 0)
                             pageView.post {
                                 if (!isFinishing && !isDestroyed && pageView.currentItem == next && cursorRevision == revision) {
                                     controllerPage(next)?.let { controllerFocus.selectEdge(it, delta > 0) }
@@ -108,10 +111,14 @@ class GridActivity : AppCompatActivity() {
 
     /** 壁纸背景层（对齐全流画布的切片；版本变化时后台换图）。 */
     private var wallpaperView: ImageView? = null
-    private var wallpaperShownVersion = -1L
+    private var wallpaperRequested: WallpaperSelection? = null
 
-    /** 壁纸变更监听（WallpaperStore 主线程回调；解码在本类自行切后台线程）。 */
-    private val wallpaperListener = { _: Long -> refreshWallpaperIfChanged() }
+    private val wallpaperListener: (Long) -> Unit = {
+        runOnUiThread {
+            refreshWallpaperIfChanged()
+            refreshDashWallpaper()
+        }
+    }
 
     /** 仪表盘模式面板（分屏时显示在应用区右半；左半由地图 tile 覆盖）。 */
     private var dashboardView: android.view.View? = null
@@ -121,10 +128,11 @@ class GridActivity : AppCompatActivity() {
     private var networkMediaOwner: Pair<Long, String>? = null
     private var mediaCommandPending = false
     private var dashboardFeedbackUntil = 0L
+    private var destinationDialog: DashboardDestinationDialog? = null
 
     /** 仪表盘模式变化（VirtualLauncher 通知）。 */
-    private val dashboardListener = { dashboard: Boolean ->
-        runOnUiThread { applyDashboardMode(dashboard) }
+    private val dashboardListener = { _: Boolean ->
+        runOnUiThread { applyDashboardMode(VirtualLauncher.dashboardMode) }
     }
 
     /** 媒体状态监听（MediaSessionsState 主线程回调）。 */
@@ -132,8 +140,8 @@ class GridActivity : AppCompatActivity() {
         runOnUiThread { if (mediaVisible) renderMediaCard() }
     }
 
-    /** 全画布位图就绪（WallpaperStore 首次构建/重建后回调）。 */
-    private val canvasReadyListener = { _: Long -> runOnUiThread { refreshDashWallpaper() } }
+    // A split resize or a newly bound panel can supersede a crop even with the same wallpaper.
+    private var dashWallpaperRequest = 0L
 
     /** 卡片视觉（暗幕透明度/模糊）——与 dock 一致（DockPrefs）。 */
     private val dockPrefsListener = {
@@ -146,7 +154,10 @@ class GridActivity : AppCompatActivity() {
     /** 地图布局变化（全屏/分屏切换改变音乐卡壁纸切片区域）。
      *  具名字段（勿内联匿名 lambda）：onDestroy 才能对称移除，否则桌面重建累积泄漏。 */
     private val mapLayoutListener: (Boolean) -> Unit =
-        { _ -> runOnUiThread { refreshDashWallpaper() } }
+        { _ -> runOnUiThread {
+            destinationDialog?.updateBounds()
+            refreshDashWallpaper()
+        } }
 
     /**
      * 应用卡片视觉：暗幕 alpha 与壁纸模糊半径（RenderEffect，半径随网格屏
@@ -159,7 +170,8 @@ class GridActivity : AppCompatActivity() {
         val alpha = (DockPrefs.scrimOpacity(this) * 255 / 100).coerceIn(175, 255)
         scrim.background =
             android.graphics.drawable.ColorDrawable(
-                android.graphics.Color.argb(alpha, 0, 0, 0),
+                if (carPalette.day) androidx.core.graphics.ColorUtils.setAlphaComponent(carPalette.surface, alpha.coerceAtLeast(232))
+                else android.graphics.Color.argb(alpha, 0, 0, 0),
             )
         val wallpaper = panel.findViewById<ImageView>(R.id.dashWallpaper)
         val percent = DockPrefs.blur(this)
@@ -184,50 +196,37 @@ class GridActivity : AppCompatActivity() {
     private fun refreshDashWallpaper() {
         val panel = dashboardView ?: return
         val wallpaper = panel.findViewById<ImageView>(R.id.dashWallpaper) ?: return
-        val params = wallpaper.layoutParams ?: return
         val scale = VirtualLauncher.gridScale()
         val canvasWidth = (VirtualLauncher.streamWidthPx * scale).toInt()
         val canvasHeight = (VirtualLauncher.streamHeightPx * scale).toInt()
-        if (canvasWidth <= 0 || canvasHeight <= 0) return
+        if (canvasWidth < 2 || canvasHeight < 2) return
+        val selection = WallpaperStore.selection(carPalette.day)
+        val request = ++dashWallpaperRequest
+        val margin = (CARD_MARGIN_PX * scale).toInt()
+        val musicStart = VirtualLauncher.dashMusicStartScreen()
+        val cropX: Int
+        val cropY: Int
+        if (VirtualLauncher.dockAtBottom) {
+            cropX = margin
+            cropY = if (musicStart >= 0) musicStart else margin * 2 + (VirtualLauncher.mapTileHeight * scale).toInt()
+        } else {
+            cropX = if (musicStart >= 0) musicStart + (VirtualLauncher.dockWidthPx * scale).toInt()
+                else ((VirtualLauncher.dockWidthPx + VirtualLauncher.appAreaWidth / 2 + CARD_MARGIN_PX / 2) * scale).toInt()
+            cropY = margin
+        }
+        val left = cropX.coerceIn(0, canvasWidth - 2)
+        val top = cropY.coerceIn(0, canvasHeight - 2)
+        val width = (canvasWidth - left - margin).coerceAtLeast(2)
+        val height = (canvasHeight - top - margin).coerceAtLeast(2)
         Bg.run("wallpaper-dash") {
-            val bitmap =
-                runCatching {
-                    WallpaperStore.aspectFillCanvas(
-                        this@GridActivity,
-                        canvasWidth,
-                        canvasHeight,
-                    )
-                }.getOrNull() ?: return@run
-            val margin = (CARD_MARGIN_PX * scale).toInt()
-            // 裁出音乐卡对应区域的壁纸切片（与卡片实际位置一致，随分屏把手位置走）：
-            //  横屏：右侧（左缘=把手中心+半把手）；竖屏：下方（顶缘同式）
-            val musicStart = VirtualLauncher.dashMusicStartScreen()
-            val cropX: Int
-            val cropY: Int
-            if (VirtualLauncher.dockAtBottom) {
-                cropX = margin
-                cropY =
-                    (if (musicStart >= 0) musicStart else margin * 2 + (VirtualLauncher.mapTileHeight * scale).toInt())
-                        .coerceAtMost(bitmap.height - 2)
-            } else {
-                cropX =
-                    (
-                        if (musicStart >= 0) {
-                            musicStart + (VirtualLauncher.dockWidthPx * scale).toInt()
-                        } else {
-                            (VirtualLauncher.dockWidthPx + VirtualLauncher.appAreaWidth / 2 + CARD_MARGIN_PX / 2) * scale
-                        }.toInt()
-                    ).coerceAtMost(bitmap.width - 2)
-                cropY = margin.coerceAtMost(bitmap.height - 2)
-            }
-            val cropW = (bitmap.width - cropX - margin).coerceAtLeast(2)
-            val cropH = (bitmap.height - cropY - margin).coerceAtLeast(2)
+            val canvas = WallpaperStore.aspectFillCanvas(this@GridActivity, canvasWidth, canvasHeight, selection) ?: return@run
+            val crop = Bitmap.createBitmap(canvas, left, top, width, height)
             runOnUiThread {
-                wallpaper.setImageBitmap(
-                    Bitmap.createBitmap(bitmap, cropX, cropY, cropW, cropH),
-                )
-                // 位图就绪后重申 RenderEffect（视图特效在位图更新后仍需生效）
-                applyDashCardChrome()
+                if (!isDestroyed && request == dashWallpaperRequest && dashboardView === panel &&
+                    selection == WallpaperStore.selection(carPalette.day)
+                ) {
+                    wallpaper.setImageBitmap(crop)
+                }
             }
         }
     }
@@ -275,7 +274,7 @@ class GridActivity : AppCompatActivity() {
             }
         }
         val hasArt = now?.art != null
-        dashboardBackdrop?.bind(now?.art, now?.backdropColor ?: ArtworkTone.DEFAULT)
+        dashboardBackdrop?.bind(now?.art, now?.backdropColor ?: ArtworkTone.DEFAULT, carPalette)
         panel.findViewById<View>(R.id.dashArtworkVeil).visibility = if (hasArt) View.VISIBLE else View.GONE
         panel.findViewById<View>(R.id.dashScrim).visibility = if (hasArt) View.GONE else View.VISIBLE
         val elapsed = android.os.SystemClock.elapsedRealtime()
@@ -390,6 +389,7 @@ class GridActivity : AppCompatActivity() {
 
     /** 仪表盘模式 → pager 位置同步（0=仪表盘，1+=桌面；已在目标位则不动）。 */
     private fun applyDashboardMode(dashboard: Boolean) {
+        if (!dashboard || VirtualLauncher.isPhoneNavigationActive()) destinationDialog?.dismiss()
         (dashboardView?.parent as? View)?.findViewById<View>(R.id.dashPhoneNavigationNotice)?.visibility =
             if (VirtualLauncher.isPhoneNavigationActive()) View.VISIBLE else View.GONE
         if (mediaVisible) renderMediaCard()
@@ -429,6 +429,30 @@ class GridActivity : AppCompatActivity() {
     private fun ownsGridAction(ownerGrid: Int, ownerMap: Int): Boolean =
         mediaVisible && !isFinishing && !isDestroyed && ownerGrid >= 0 &&
             VirtualLauncher.gridDisplayId == ownerGrid && VirtualLauncher.mapDisplayId == ownerMap
+
+    private fun chooseDestination(panel: View) {
+        val ownerGrid = VirtualLauncher.gridDisplayId
+        val ownerMap = VirtualLauncher.mapDisplayId
+        val session = VirtualLauncher.sessionGeneration()
+        val navigation = VirtualLauncher.navigationRevision()
+        val presentation = VirtualLauncher.presentationRevision()
+        fun live() = ownsGridAction(ownerGrid, ownerMap) && VirtualLauncher.isCurrentSession(session) &&
+            VirtualLauncher.navigationRevision() == navigation && !VirtualLauncher.isPhoneNavigationActive()
+        fun menuCurrent() = live() && VirtualLauncher.presentationRevision() == presentation &&
+            VirtualLauncher.dashboardMode && !VirtualLauncher.mapFullscreen && pager?.currentItem == 0
+        if (!menuCurrent() || ownerGrid <= 0 || ownerMap <= 0 || display?.displayId != ownerGrid) return
+        if (destinationDialog?.isShowing == true) return
+        val dialog = DashboardDestinationDialog(this, panel, ::menuCurrent) { destination ->
+            if (menuCurrent() && !VirtualLauncher.submitDashboardDestination(destination, ::live)) {
+                showDashboardFeedback("请在车机显示 CarDeck 首页时重试")
+            }
+        }
+        dialog.setOnDismissListener { if (destinationDialog === dialog) destinationDialog = null }
+        if (dialog.updateBounds()) {
+            destinationDialog = dialog
+            dialog.show()
+        }
+    }
 
     private fun showDashboardFeedback(message: String) {
         dashboardFeedbackUntil = android.os.SystemClock.elapsedRealtime() + 6_000
@@ -494,8 +518,6 @@ class GridActivity : AppCompatActivity() {
             // 仪表盘面板已改为 ViewPager2 首页（PageAdapter 绑定时创建），
             // 此处仅注册全局监听：卡片视觉/媒体状态/壁纸切片/仪表盘模式。
             DockPrefs.addListener(dockPrefsListener)
-            WallpaperStore
-                .addCanvasReadyListener(canvasReadyListener)
             VirtualLauncher.addDashboardListener(dashboardListener)
             VirtualLauncher.addMapLayoutListener(mapLayoutListener)
             applyDashboardMode(VirtualLauncher.dashboardMode)
@@ -509,34 +531,38 @@ class GridActivity : AppCompatActivity() {
         dotsRow = findViewById(R.id.dotsRow)
         pager?.registerOnPageChangeCallback(
             object : ViewPager2.OnPageChangeCallback() {
+                private var swipeRevision: Long? = null
+
+                private fun currentSwipe(): Boolean =
+                    swipeRevision == VirtualLauncher.presentationRevision() && mediaVisible &&
+                        display?.displayId == VirtualLauncher.gridDisplayId &&
+                        VirtualLauncher.gridDisplayId == VirtualLauncher.activeAppDisplayId() &&
+                        !VirtualLauncher.mapFullscreen
+
                 override fun onPageSelected(position: Int) {
                     updateDots(position)
-                    if (VirtualLauncher.mapFullscreen) return
-                    // 用户滑动切换仪表盘/桌面：回写 launcher（含地图任务与 tile 布局）
-                    if (position == 0 && !VirtualLauncher.dashboardMode) VirtualLauncher.showDashboard()
-                    if (position != 0 && VirtualLauncher.dashboardMode) VirtualLauncher.showDesktop()
                 }
 
-                override fun onPageScrolled(
-                    position: Int,
-                    positionOffset: Float,
-                    offsetPixels: Int,
-                ) {
-                    // 滑动过程中 tile 跟随手指平移（合成器采样位置随进度左移/右移）；
-                    // 回滑进仪表盘时提前显示 tile（纯视觉，状态在落定 IDLE 时统一对账）
-                    if (position == 0 && !VirtualLauncher.mapFullscreen) {
+                override fun onPageScrolled(position: Int, positionOffset: Float, offsetPixels: Int) {
+                    if (position == 0 && currentSwipe()) {
                         VirtualLauncher.setTileSlide(positionOffset)
                         if (positionOffset < 1f) VirtualLauncher.showMapTile()
                     }
                 }
 
                 override fun onPageScrollStateChanged(state: Int) {
-                    if (state == androidx.viewpager2.widget.ViewPager2.SCROLL_STATE_IDLE) {
-                        VirtualLauncher.setTileSlide(0f)
-                        // 落定对账：仪表盘模式与所在页一致（含异常中断的对账恢复）
-                        // The pager also settles behind the fullscreen Baidu activity.
-                        // Only a visible grid can change the compositor's presentation.
-                        if (!VirtualLauncher.mapFullscreen) VirtualLauncher.syncDashboard(pager?.currentItem == 0)
+                    when (state) {
+                        ViewPager2.SCROLL_STATE_DRAGGING -> swipeRevision = VirtualLauncher.presentationRevision()
+                        ViewPager2.SCROLL_STATE_IDLE -> {
+                            // Programmatic updates when BACK returns to this grid can deliver
+                            // late callbacks for the old page. Only a live swipe owns the tile.
+                            val apply = currentSwipe()
+                            swipeRevision = null
+                            if (apply) {
+                                VirtualLauncher.setTileSlide(0f)
+                                VirtualLauncher.syncDashboard(pager?.currentItem == 0)
+                            }
+                        }
                     }
                 }
             },
@@ -546,17 +572,21 @@ class GridActivity : AppCompatActivity() {
     /** 壁纸版本变化时后台重解码并换图（手机侧换壁纸后 ≤2s 桌面更新）。 */
     private fun refreshWallpaperIfChanged() {
         val view = wallpaperView ?: return
-        val current = WallpaperStore.version
-        if (current == wallpaperShownVersion) return
-        wallpaperShownVersion = current
-        val params = view.layoutParams as? android.widget.FrameLayout.LayoutParams
+        val selection = WallpaperStore.selection(carPalette.day)
+        if (selection == wallpaperRequested) return
+        val params = view.layoutParams as? android.widget.FrameLayout.LayoutParams ?: return
+        val width = params.width
+        val height = params.height
+        if (width <= 0 || height <= 0) return
+        wallpaperRequested = selection
         Bg.run("wallpaper-grid") {
             val bitmap =
                 runCatching {
                     WallpaperStore.aspectFillCanvas(
                         this@GridActivity,
-                        params?.width ?: 0,
-                        params?.height ?: 0,
+                        width,
+                        height,
+                        selection,
                     )
                 }.getOrNull()
             if (bitmap != null) {
@@ -568,13 +598,31 @@ class GridActivity : AppCompatActivity() {
                     }
                 VirtualLauncher.logSink?.invoke(
                     "WALLPAPER-GRID: bitmap=${bitmap.width}x${bitmap.height} " +
-                        "view=${params?.width}x${params?.height} left=${params?.leftMargin} " +
+                        "view=${width}x$height left=${params.leftMargin} " +
                         "samples=[$samples]",
                 )
-                runOnUiThread { view.setImageBitmap(bitmap) }
+                runOnUiThread {
+                    if (!isDestroyed && selection == WallpaperStore.selection(carPalette.day)) view.setImageBitmap(bitmap)
+                }
             } else {
-                VirtualLauncher.logSink?.invoke("WALLPAPER-GRID: 解码失败")
+                runOnUiThread {
+                    if (selection == wallpaperRequested) wallpaperRequested = null
+                }
             }
+        }
+    }
+
+    override fun onCarAppearanceChanged(day: Boolean) {
+        refreshWallpaperIfChanged()
+        refreshDashWallpaper()
+        destinationDialog?.applyPalette(carPalette)
+        val root = findViewById<View>(R.id.gridPager) ?: return
+        (root as ViewGroup).descendants.filterIsInstance<TextView>()
+            .filter { it.id == R.id.cellLabel }.forEach(carPalette::cellLabel)
+        dashboardView?.let {
+            carPalette.media((it.parent as? View) ?: it)
+            applyDashCardChrome()
+            renderMediaCard()
         }
     }
 
@@ -587,6 +635,7 @@ class GridActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        destinationDialog?.dismiss()
         cursorRevision++
         controllerFocus.clear()
         mediaVisible = false
@@ -737,6 +786,7 @@ class GridActivity : AppCompatActivity() {
 
         fun bind() {
             dashboardView = panel
+            carPalette.media(itemView)
             itemView.findViewById<View>(R.id.dashPhoneNavigationNotice).visibility =
                 if (VirtualLauncher.isPhoneNavigationActive()) View.VISIBLE else View.GONE
             dashboardBackdrop?.clear()
@@ -781,13 +831,7 @@ class GridActivity : AppCompatActivity() {
             }
             panel.findViewById<View>(R.id.dashOpenPlayer).setOnClickListener { openCarPlayer(dashboardMediaSnapshot?.pkg) }
             panel.findViewById<View>(R.id.dashBaiduDestination).setOnClickListener {
-                val ownerGrid = VirtualLauncher.gridDisplayId
-                val ownerMap = VirtualLauncher.mapDisplayId
-                val ownerSession = VirtualLauncher.sessionGeneration()
-                val submitted = VirtualLauncher.submitDashboardDestination {
-                    VirtualLauncher.isCurrentSession(ownerSession) && ownsGridAction(ownerGrid, ownerMap)
-                }
-                if (!submitted) showDashboardFeedback("请在车机显示 CarDeck 首页时重试")
+                chooseDestination(panel)
             }
             panel.findViewById<View>(R.id.dashBaiduCruise).setOnClickListener {
                 val ownerGrid = VirtualLauncher.gridDisplayId
@@ -900,6 +944,7 @@ class GridActivity : AppCompatActivity() {
                         layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx)
                     }
                 val label = view.findViewById<TextView>(R.id.cellLabel)
+                carPalette.cellLabel(label)
                 when (cell) {
                     is Cell.Dashboard -> Unit // 仪表盘独立成页，不进网格
                     is Cell.Pinned -> {
@@ -981,8 +1026,6 @@ class GridActivity : AppCompatActivity() {
         MediaSessionsState
             .removeListener(mediaStateListener)
         DockPrefs.removeListener(dockPrefsListener)
-        WallpaperStore
-            .removeCanvasReadyListener(canvasReadyListener)
         super.onDestroy()
     }
 

@@ -5,6 +5,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BaiduDestinationTest {
+    @Test fun dashboardChoicesStartSavedAddressGuidanceOrOpenAnEmptyNativeSearch() {
+        val choices = BaiduDestination.entries
+        assertEquals(listOf("回家", "去公司", "新目的地"), choices.map { it.title })
+        for ((choice, address) in listOf(BaiduDestination.HOME to "home", BaiduDestination.COMPANY to "company")) {
+            val uri = URI(choice.page.uri)
+            assertEquals("baidumap", uri.scheme)
+            assertEquals("map", uri.host)
+            assertEquals("/navi/common", uri.path)
+            assertEquals(setOf("addr=$address", "coord_type=bd09ll", "src=andr.shaonialife.cardeck"), uri.query.split("&").toSet())
+        }
+        assertEquals(BaiduMapPage.DESTINATION, BaiduDestination.NEW.page)
+        assertNotEquals(BaiduMapPage.HOME, BaiduDestination.HOME.page)
+    }
+
     @Test fun navOpensTheBaiduPoiSearchPageWithoutStartingGuidanceOrSupplyingAnyDestination() {
         val uri = URI(BaiduMapPage.DESTINATION.uri)
         assertEquals("baidumap", uri.scheme)
